@@ -42,7 +42,6 @@ public class CohorteProvider {
 		@OperationParam(name = "researchStudyEndpoint") Endpoint researchStudyEndpoint,
 		@OperationParam(name = "dataEndpoint") Endpoint dataEndpoint,
 		@OperationParam(name = "terminologyEndpoint") Endpoint theTerminologyEndpoint) {
-		new CohorteEvaluationOptions();
 		return new CohorteService(new RestRepository(context.getRestfulClientFactory().newGenericClient(remoteUrl)), CohorteEvaluationOptions.defaultOptions())
 			.cohorting(researchStudyUrl, researchStudyEndpoint, dataEndpoint, theTerminologyEndpoint);
 	}

@@ -341,3 +341,6 @@ hapi:
 #  username: SomeUsername
 remote:
   url: 'http://localhost:8080/fhir'
+anonymization:
+  enabled: true
+  encryption-key: "mySecretKeyForCohorting"

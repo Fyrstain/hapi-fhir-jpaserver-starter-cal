@@ -1,8 +1,3 @@
-//
-// Source code recreated from a .class file by IntelliJ IDEA
-// (powered by FernFlower decompiler)
-//
-
 package ca.uhn.fhir.jpa.starter.cohort.service.r5;
 
 import org.opencds.cqf.fhir.cql.EvaluationSettings;
@@ -16,7 +11,7 @@ public class CohorteEvaluationOptions {
 	private Map<String, ValidationProfile> validationProfiles = new HashMap();
 	private EvaluationSettings evaluationSettings = null;
 
-	public CohorteEvaluationOptions() {
+	private CohorteEvaluationOptions() {
 	}
 
 	public static CohorteEvaluationOptions defaultOptions() {
