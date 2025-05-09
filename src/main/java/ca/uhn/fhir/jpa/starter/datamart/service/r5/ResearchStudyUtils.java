@@ -117,6 +117,7 @@ public class ResearchStudyUtils {
 			.map(Group.GroupMemberComponent::getEntity)
 			.filter(Objects::nonNull)
 			.map(entity -> referenceFromIdentifier(entity, repository))
+			.filter(Objects::nonNull)
 			.collect(Collectors.toList());
 	}
 
@@ -126,6 +127,9 @@ public class ResearchStudyUtils {
 		params.put("identifier",
 			Collections.singletonList(new TokenParam(id.getSystem(), id.getValue())));
 		Bundle b = repository.search(Bundle.class, Patient.class, params, null);
+		if(b.getEntry().isEmpty()) {
+			return null;
+		}
 		Patient patient = (Patient) b.getEntry().get(0).getResource();
 		IIdType pid = patient.getIdElement();
 		return pid.getResourceType() + "/" + pid.getIdPart();

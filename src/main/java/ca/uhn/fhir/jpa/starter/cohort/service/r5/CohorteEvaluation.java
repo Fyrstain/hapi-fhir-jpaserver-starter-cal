@@ -71,8 +71,10 @@ public class CohorteEvaluation {
 			if (result instanceof BooleanType) {
 
 				if (((BooleanType) result).booleanValue()) {
-					Identifier patientIdent = repository.read(Patient.class, new IdType(subjectId)).getIdentifier().get(0);
-					group.addMember().setEntity(new Reference().setIdentifier(pseudonymizeIdentifier(patientIdent)));
+					List<Identifier> patientIdent = repository.read(Patient.class, new IdType(subjectId)).getIdentifier();
+					if(!patientIdent.isEmpty()) {
+						group.addMember().setEntity(new Reference().setIdentifier(pseudonymizeIdentifier(patientIdent.get(0))));
+					}
 				}
 			}
 		}
