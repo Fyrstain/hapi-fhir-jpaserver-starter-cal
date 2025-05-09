@@ -6,5 +6,5 @@ import org.hl7.fhir.r5.model.ListResource;
 
 public interface DatamartServiceImpl {
 
-	ListResource generateDatamart(CanonicalType researchStudyUrl, Endpoint researchStudyEndpoint, Endpoint dataEndpoint, Endpoint terminologyEndpoint);
+	ListResource generateDatamart(CanonicalType researchStudyUrl, Endpoint researchStudyEndpoint, Endpoint dataEndpoint, Endpoint terminologyEndpoint, Endpoint cqlEngineEndpoint);
 }

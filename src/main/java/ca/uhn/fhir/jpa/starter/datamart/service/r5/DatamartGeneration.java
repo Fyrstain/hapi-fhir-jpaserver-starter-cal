@@ -2,12 +2,8 @@ package ca.uhn.fhir.jpa.starter.datamart.service.r5;
 
 import ca.uhn.fhir.rest.api.MethodOutcome;
 import org.apache.commons.lang3.tuple.Pair;
-import org.hl7.elm.r1.VersionedIdentifier;
 import org.hl7.fhir.r5.model.*;
-import org.opencds.cqf.cql.engine.execution.CqlEngine;
 import org.opencds.cqf.fhir.api.Repository;
-import org.opencds.cqf.fhir.cql.Engines;
-import org.opencds.cqf.fhir.cql.engine.parameters.CqlFhirParametersConverter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -15,10 +11,10 @@ import java.util.List;
 
 public class DatamartGeneration {
 	private static final Logger logger = LoggerFactory.getLogger(DatamartGeneration.class);
-	private final CqlEngine cqlEngine;
+	private final RemoteCqlClient cqlEngine;
 	private final Repository repository;
 
-	public DatamartGeneration(CqlEngine cqlEngine, Repository repository) {
+	public DatamartGeneration(RemoteCqlClient cqlEngine, Repository repository) {
 		this.cqlEngine = cqlEngine;
 		this.repository = repository;
 	}
@@ -33,12 +29,13 @@ public class DatamartGeneration {
 	 * @return A ListResource containing the evaluation result for each patient.
 	 * @throws RuntimeException if any subject identifier is {@code null}.
 	 */
-	public ListResource generateDatamart(ResearchStudy researchStudy, EvidenceVariable evidenceVariable, List<String> subjectIds, VersionedIdentifier id) {
+	public ListResource generateDatamart(ResearchStudy researchStudy, EvidenceVariable evidenceVariable, List<String> subjectIds, Parameters evaluateParams, String id) {
 		logger.info("Generating Datamart {} with {} subject(s)", researchStudy.getUrl(), subjectIds.size());
 		ListResource listParams = new ListResource();
 		listParams.setStatus(ListResource.ListStatus.CURRENT);
 		listParams.setMode(Enumerations.ListMode.SNAPSHOT);
 		listParams.setTitle("Evaluation parameters for study " + researchStudy.getUrl());
+		evaluateParams.addParameter().setName("subject");
 		for (String subjectId : subjectIds) {
 			if (subjectId == null) {
 				throw new RuntimeException("SubjectId is required in order to calculate.");
@@ -47,8 +44,9 @@ public class DatamartGeneration {
 			Pair<String, String> subjectInfo = this.getSubjectTypeAndId(subjectId);
 			String subjectTypePart = subjectInfo.getLeft();
 			String subjectIdPart = subjectInfo.getRight();
-			this.cqlEngine.getState().setContextValue(subjectTypePart, subjectIdPart);
-			this.evaluateVariableDefinition(listParams, evidenceVariable, subjectTypePart, subjectIdPart, id);
+			evaluateParams.getParameter("subject").setValue(new StringType(subjectIdPart));
+			//this.cqlEngine.getState().setContextValue(subjectTypePart, subjectIdPart);
+			this.evaluateVariableDefinition(listParams, evidenceVariable, subjectTypePart, subjectIdPart, evaluateParams, id);
 		}
 
 		return listParams;
@@ -62,10 +60,10 @@ public class DatamartGeneration {
 	 * @param evidenceVariable The EvidenceVariable containing the definition expression for datamart generation.
 	 * @param subjectType      The type of the subject.
 	 * @param subjectId        The identifier of the subject.
-	 * @param id               The id of the CQL library containing the expression.
+	 * @param libId            The id of the CQL library containing the expression.
 	 * @throws IllegalArgumentException if the EvidenceVariable is missing the definition expression.
 	 */
-	public void evaluateVariableDefinition(ListResource listParams, EvidenceVariable evidenceVariable, String subjectType, String subjectId, VersionedIdentifier id) {
+	public void evaluateVariableDefinition(ListResource listParams, EvidenceVariable evidenceVariable, String subjectType, String subjectId, Parameters evaluateParams, String libId) {
 		/*String definitionExpression = evidenceVariable.getCharacteristic().stream().findFirst()
 			.map(EvidenceVariable.EvidenceVariableCharacteristicComponent::getDefinitionByCombination)
 			.map(EvidenceVariable.EvidenceVariableCharacteristicDefinitionByCombinationComponent::getCharacteristic)
@@ -74,7 +72,7 @@ public class DatamartGeneration {
 			.map(EvidenceVariable.EvidenceVariableCharacteristicComponent::getDefinitionExpression)
 			.map(Expression::getExpression)
 			.orElseThrow(() -> new IllegalArgumentException(String.format("DefinitionExpression is missing for %s", evidenceVariable.getUrl())));*/
-		Parameters result = this.evaluateDefinitionExpression(id);
+		Parameters result = this.evaluateDefinitionExpression(evaluateParams, libId);
 		Patient patient = (Patient) result.getParameter("Patient").getResource();
 		result.getParameter("Patient").setResource(null);
 		result.getParameter("Patient").setValue(ResearchStudyUtils.pseudonymizeIdentifier(patient.getIdentifier().get(0)));
@@ -85,12 +83,13 @@ public class DatamartGeneration {
 	/**
 	 * Evaluates the given CQL expression using the CQL evaluation engine.
 	 *
-	 * @param id The id of the CQL library containing the expression.
+	 * @param libId The id of the CQL library containing the expression.
 	 * @return A FHIR Parameters resource containing the results of the evaluation.
 	 */
-	public Parameters evaluateDefinitionExpression(VersionedIdentifier id) {
-		CqlFhirParametersConverter cqlFhirParametersConverter = Engines.getCqlFhirParametersConverter(this.repository.fhirContext());
-		return (Parameters) cqlFhirParametersConverter.toFhirParameters(this.cqlEngine.evaluate(id));
+	public Parameters evaluateDefinitionExpression(Parameters evaluateParam, String libId) {
+		/*CqlFhirParametersConverter cqlFhirParametersConverter = Engines.getCqlFhirParametersConverter(this.repository.fhirContext());
+		return (Parameters) cqlFhirParametersConverter.toFhirParameters(this.cqlEngine.evaluate(id));*/
+		return cqlEngine.evaluateLibrary(evaluateParam, libId);
 	}
 
 	/**

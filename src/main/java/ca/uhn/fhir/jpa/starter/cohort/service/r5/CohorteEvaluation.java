@@ -1,10 +1,7 @@
 package ca.uhn.fhir.jpa.starter.cohort.service.r5;
 
 import org.apache.commons.lang3.tuple.Pair;
-import org.hl7.elm.r1.ExpressionDef;
 import org.hl7.fhir.r5.model.*;
-import org.opencds.cqf.cql.engine.execution.CqlEngine;
-import org.opencds.cqf.cql.engine.execution.Libraries;
 import org.opencds.cqf.fhir.api.Repository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,10 +10,10 @@ import java.util.List;
 
 public class CohorteEvaluation {
 	private static final Logger logger = LoggerFactory.getLogger(CohorteEvaluation.class);
-	private final CqlEngine cqlEngine;
+	private final RemoteCqlClient cqlEngine;
 	private final Repository repository;
 
-	public CohorteEvaluation(CqlEngine cqlEngine, Repository repository) {
+	public CohorteEvaluation(RemoteCqlClient cqlEngine, Repository repository) {
 		this.cqlEngine = cqlEngine;
 		this.repository = repository;
 	}
@@ -30,9 +27,10 @@ public class CohorteEvaluation {
 	 * @return A Group resource containing the subjects that meet the evaluation criteria.
 	 * @throws RuntimeException if any subject identifier is {@code null}.
 	 */
-	public Group evaluate(ResearchStudy researchStudy, EvidenceVariable evidenceVariable, List<String> subjectIds) {
+	public Group evaluate(ResearchStudy researchStudy, EvidenceVariable evidenceVariable, List<String> subjectIds, Parameters evaluateParams, String libId) {
 		logger.info("Evaluating Cohort {} with {} subject(s)", researchStudy.getUrl(), subjectIds.size());
 		Group group = new Group();
+		evaluateParams.addParameter().setName("subject");
 		for (String subjectId : subjectIds) {
 			if (subjectId == null) {
 				throw new RuntimeException("SubjectId is required in order to calculate.");
@@ -41,8 +39,9 @@ public class CohorteEvaluation {
 			Pair<String, String> subjectInfo = this.getSubjectTypeAndId(subjectId);
 			String subjectTypePart = subjectInfo.getLeft();
 			String subjectIdPart = subjectInfo.getRight();
-			this.cqlEngine.getState().setContextValue(subjectTypePart, subjectIdPart);
-			this.evaluateVariableDefinition(group, evidenceVariable, subjectTypePart, subjectIdPart);
+			evaluateParams.getParameter("subject").setValue(new StringType(subjectIdPart));
+			//this.cqlEngine.getState().setContextValue(subjectTypePart, subjectIdPart);
+			this.evaluateVariableDefinition(group, evidenceVariable, subjectTypePart, subjectIdPart, evaluateParams, libId);
 		}
 
 		return group;
@@ -58,7 +57,7 @@ public class CohorteEvaluation {
 	 * @param subjectId        The identifier of the subject.
 	 * @throws IllegalArgumentException if the EvidenceVariable is missing the definition expression.
 	 */
-	public void evaluateVariableDefinition(Group group, EvidenceVariable evidenceVariable, String subjectType, String subjectId) {
+	public void evaluateVariableDefinition(Group group, EvidenceVariable evidenceVariable, String subjectType, String subjectId, Parameters evaluateParams, String libId) {
 		String definitionExpression = evidenceVariable.getCharacteristic().stream().findFirst()
 			.map(EvidenceVariable.EvidenceVariableCharacteristicComponent::getDefinitionByCombination)
 			.map(EvidenceVariable.EvidenceVariableCharacteristicDefinitionByCombinationComponent::getCharacteristic)
@@ -68,10 +67,10 @@ public class CohorteEvaluation {
 			.map(Expression::getExpression)
 			.orElseThrow(() -> new IllegalArgumentException(String.format("DefinitionExpression is missing for %s", evidenceVariable.getUrl())));
 		if (definitionExpression != null && !definitionExpression.isEmpty()) {
-			Object result = this.evaluateDefinitionExpression(definitionExpression);
-			if (result instanceof Boolean) {
+			Object result = this.evaluateDefinitionExpression(definitionExpression, evaluateParams, libId);
+			if (result instanceof BooleanType) {
 
-				if (Boolean.TRUE.equals(result)) {
+				if (((BooleanType) result).booleanValue()) {
 					Identifier patientIdent = repository.read(Patient.class, new IdType(subjectId)).getIdentifier().get(0);
 					group.addMember().setEntity(new Reference().setIdentifier(pseudonymizeIdentifier(patientIdent)));
 				}
@@ -102,10 +101,12 @@ public class CohorteEvaluation {
 	 * @param criteriaExpression The CQL expression to evaluate.
 	 * @return The result of the evaluated expression.
 	 */
-	public Object evaluateDefinitionExpression(String criteriaExpression) {
-		ExpressionDef ref = Libraries.resolveExpressionRef(criteriaExpression, this.cqlEngine.getState().getCurrentLibrary());
-		Object result = this.cqlEngine.getEvaluationVisitor().visitExpressionDef(ref, this.cqlEngine.getState());
-		return result;
+	public Object evaluateDefinitionExpression(String criteriaExpression, Parameters evaluateParams, String libId) {
+		//ExpressionDef ref = Libraries.resolveExpressionRef(criteriaExpression, this.cqlEngine.getState().getCurrentLibrary());
+		//Object result = this.cqlEngine.getEvaluationVisitor().visitExpressionDef(ref, this.cqlEngine.getState());
+		//evaluateParams.addParameter().setName("expression").setValue(new StringType(criteriaExpression));
+		Parameters result = cqlEngine.evaluateLibrary(evaluateParams, libId);
+		return result.getParameter(criteriaExpression).getValue();
 	}
 
 	/**

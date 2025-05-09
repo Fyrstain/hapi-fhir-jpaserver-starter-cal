@@ -31,7 +31,8 @@ public class CohorteService {
 		CanonicalType researchStudyUrl,
 		Endpoint researchStudyEndpoint,
 		Endpoint dataEndpoint,
-		Endpoint terminologyEndpoint) {
+		Endpoint terminologyEndpoint,
+		Endpoint cqlEngineEndpoint) {
 		Repository repo = Repositories.proxy(repository, false, dataEndpoint, researchStudyEndpoint, terminologyEndpoint);
 		Bundle b = repo.search(Bundle.class, ResearchStudy.class, Searches.byCanonical(researchStudyUrl.getCanonical()), null);
 		if (b.getEntry().isEmpty()) {
@@ -39,9 +40,24 @@ public class CohorteService {
 			throw new ResourceNotFoundException(errorMsg);
 		}
 		ResearchStudy researchStudy = (ResearchStudy) b.getEntry().get(0).getResource();
-		CohorteProcessor cohorteProcessor = new CohorteProcessor(repo, settings, new RepositorySubjectProvider());
-		Group group = cohorteProcessor.cohorting(researchStudy);
+
+		Parameters evaluateParams = new Parameters();
+		evaluateParams.addParameter()
+			.setName("dataEndpoint")
+			.setResource(dataEndpoint);
+		evaluateParams.addParameter()
+			.setName("contentEndpoint")
+			.setResource(researchStudyEndpoint);
+		evaluateParams.addParameter()
+			.setName("terminologyEndpoint")
+			.setResource(terminologyEndpoint);
+
+		RemoteCqlClient cqlClient = new RemoteCqlClient(cqlEngineEndpoint, repo);
+
+		CohorteProcessor cohorteProcessor = new CohorteProcessor(repo, cqlClient, new RepositorySubjectProvider());
+		Group group = cohorteProcessor.cohorting(researchStudy, evaluateParams);
 		buildAndSaveGroup(repo, group, researchStudy);
+
 		updateResearchStudyWithGroup(repo, researchStudy, group);
 		return group;
 	}

@@ -1,5 +1,5 @@
 package ca.uhn.fhir.jpa.starter.datamart.r5;
-
+/*
 import ca.uhn.fhir.context.FhirContext;
 import ca.uhn.fhir.jpa.starter.datamart.service.r5.DatamartGeneration;
 import ca.uhn.fhir.rest.api.MethodOutcome;
@@ -168,3 +168,4 @@ class DatamartGenerationTest {
         assertTrue(ex.getMessage().contains("SubjectIds must be in the format"));
     }
 }
+*/

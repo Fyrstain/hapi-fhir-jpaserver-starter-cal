@@ -37,13 +37,15 @@ public class DatamartProvider {
 		@OperationParam(name = "researchStudyEndpoint") Endpoint researchStudyEndpoint,
 		@OperationParam(name = "dataEndpoint") Endpoint dataEndpoint,
 		@OperationParam(name = "terminologyEndpoint") Endpoint terminologyEndpoint,
+		@OperationParam(name = "cqlEngineEndpoint") Endpoint cqlEngineEndpoint,
 		RequestDetails requestDetails
 	) {
 		return myFactory.create(requestDetails).generateDatamart(
 			researchStudyUrl,
 			researchStudyEndpoint,
 			dataEndpoint,
-			terminologyEndpoint
+			terminologyEndpoint,
+			cqlEngineEndpoint
 		);
 	}
 }

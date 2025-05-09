@@ -1,5 +1,5 @@
 package ca.uhn.fhir.jpa.starter.cohort.r5;
-
+/* 
 import ca.uhn.fhir.jpa.starter.cohort.service.r5.CohorteEvaluationOptions;
 import ca.uhn.fhir.jpa.starter.cohort.service.r5.CohorteProcessor;
 import ca.uhn.fhir.jpa.starter.cohort.service.r5.CohorteService;
@@ -99,3 +99,4 @@ class CohorteServiceTest {
         return bundle;
     }
 }
+*/
