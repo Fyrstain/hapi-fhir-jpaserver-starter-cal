@@ -1,6 +1,7 @@
 package ca.uhn.fhir.jpa.starter.datamart.service.r5;
 
 import ca.uhn.fhir.rest.api.MethodOutcome;
+import ca.uhn.fhir.rest.server.exceptions.InternalErrorException;
 import org.apache.commons.lang3.tuple.Pair;
 import org.hl7.fhir.r5.model.*;
 import org.opencds.cqf.fhir.api.Repository;
@@ -77,7 +78,13 @@ public class DatamartGeneration {
 		result.getParameter("Patient").setResource(null);
 		result.getParameter("Patient").setValue(ResearchStudyUtils.pseudonymizeIdentifier(patient.getIdentifier().get(0)));
 		MethodOutcome outcome = repository.create(result);
-		listParams.addEntry().setItem(new Reference(String.format("%s/%s", outcome.getId().getResourceType(), outcome.getId().getIdPart())));
+		if (outcome.getId() != null) {
+			listParams.addEntry().setItem(new Reference(outcome.getId()));
+		} else if (outcome.getResource() != null) {
+			listParams.addEntry().setItem(new Reference(outcome.getResource().getIdElement()));
+		} else {
+			throw new InternalErrorException(String.format("Cannot retrieve ID of created parameter for Evidence Variable %s, Subject %s", evidenceVariable.getId(), subjectId));
+		}
 	}
 
 	/**

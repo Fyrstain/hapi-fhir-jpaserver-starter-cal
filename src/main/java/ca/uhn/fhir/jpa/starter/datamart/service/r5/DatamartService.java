@@ -3,6 +3,7 @@ package ca.uhn.fhir.jpa.starter.datamart.service.r5;
 import ca.uhn.fhir.jpa.starter.datamart.service.DatamartEvaluationOptions;
 import ca.uhn.fhir.jpa.starter.datamart.service.Repositories;
 import ca.uhn.fhir.rest.api.MethodOutcome;
+import ca.uhn.fhir.rest.server.exceptions.InternalErrorException;
 import ca.uhn.fhir.rest.server.exceptions.ResourceNotFoundException;
 import org.hl7.fhir.r5.model.*;
 import org.opencds.cqf.fhir.api.Repository;
@@ -85,9 +86,18 @@ public class DatamartService implements DatamartServiceImpl {
 			repo.update(listResource);
 		} else {
 			MethodOutcome outcome = repo.create(listResource);
+			Reference reference;
+			if (outcome.getId() != null) {
+				reference = new Reference(outcome.getId());
+			} else if (outcome.getResource() != null) {
+				reference = new Reference(outcome.getResource().getIdElement());
+			} else {
+				throw new InternalErrorException(String.format("Cannot retrieve ID of created list for ResearchStudy %s",
+					researchStudy.getId()));
+			}
 			researchStudy.getExtensionByUrl(ResearchStudyUtils.EXT_URL).addExtension()
 				.setUrl("evaluation")
-				.setValue(new Reference(String.format("%s/%s", outcome.getId().getResourceType(), outcome.getId().getIdPart())));
+				.setValue(reference);
 			CodeableConcept phase = new CodeableConcept();
 			phase.addCoding()
 				.setCode(ResearchStudyUtils.POST_DATAMART)
