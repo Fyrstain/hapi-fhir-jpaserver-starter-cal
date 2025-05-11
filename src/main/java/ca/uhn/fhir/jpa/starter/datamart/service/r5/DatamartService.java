@@ -83,6 +83,7 @@ public class DatamartService implements DatamartServiceImpl {
 		Extension listReference = researchStudy.getExtensionByUrl(ResearchStudyUtils.EXT_URL).getExtensionByUrl("evaluation");
 		if (listReference != null) {
 			listResource.setId(listReference.getValueReference().getReferenceElement().getIdPart());
+			repo.update(listResource);
 			return listResource;
 		} else {
 			MethodOutcome outcome = repo.create(listResource);

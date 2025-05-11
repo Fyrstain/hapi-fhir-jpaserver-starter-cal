@@ -1,7 +1,9 @@
 package ca.uhn.fhir.jpa.starter.datamart.service.r5;
 
 import ca.uhn.fhir.model.api.IQueryParameterType;
+import ca.uhn.fhir.rest.param.NumberParam;
 import ca.uhn.fhir.rest.param.StringParam;
+import ca.uhn.fhir.rest.param.TokenParam;
 import org.hl7.fhir.r5.model.*;
 import org.opencds.cqf.fhir.api.Repository;
 import org.slf4j.Logger;
@@ -55,9 +57,9 @@ public class DatamartTransformation {
 	 */
 	public Bundle fetchDataMartBundle(String listId) {
 		Map<String, List<IQueryParameterType>> params = new HashMap<>();
-		params.put("_id", Collections.singletonList(new StringParam(listId)));
-		params.put("_include", Collections.singletonList(new StringParam("List:item")));
-		return repository.search(Bundle.class, ListResource.class, params, null);
+		params.put("_count", Collections.singletonList(new NumberParam(1000)));
+		params.put("_has:List:itembis:_id", Collections.singletonList(new TokenParam(listId)));
+		return repository.search(Bundle.class, Parameters.class, params, null);
 	}
 
 }
