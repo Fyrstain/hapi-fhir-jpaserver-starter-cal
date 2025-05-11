@@ -67,8 +67,7 @@ public class DatamartService implements DatamartServiceImpl {
 
 		DatamartProcessor datamartProcessor = new DatamartProcessor(repo, cqlClient);
 		ListResource list = datamartProcessor.generateDatamart(researchStudy, evaluateParams);
-		updateResearchStudyWithList(repo, researchStudy, list);
-		return list;
+		return updateResearchStudyWithList(repo, researchStudy, list);
 	}
 
 	/**
@@ -78,12 +77,13 @@ public class DatamartService implements DatamartServiceImpl {
 	 * @param repo          The repository to use for updates.
 	 * @param researchStudy The ResearchStudy to modify.
 	 * @param listResource  The ListResource.
+	 * @return the updated or create List resource
 	 */
-	public void updateResearchStudyWithList(Repository repo, ResearchStudy researchStudy, ListResource listResource) {
+	public ListResource updateResearchStudyWithList(Repository repo, ResearchStudy researchStudy, ListResource listResource) {
 		Extension listReference = researchStudy.getExtensionByUrl(ResearchStudyUtils.EXT_URL).getExtensionByUrl("evaluation");
 		if (listReference != null) {
 			listResource.setId(listReference.getValueReference().getReferenceElement().getIdPart());
-			repo.update(listResource);
+			return listResource;
 		} else {
 			MethodOutcome outcome = repo.create(listResource);
 			Reference reference;
@@ -105,6 +105,15 @@ public class DatamartService implements DatamartServiceImpl {
 			researchStudy.setPhase(phase);
 
 			repo.update(researchStudy);
+
+			if (outcome.getResource() != null) {
+				return (ListResource) outcome.getResource();
+			} else if (outcome.getId() != null) {
+				return (ListResource) listResource.setId(outcome.getId());
+			} else {
+				throw new InternalErrorException(String.format("Cannot retrieve ID of created list for ResearchStudy %s",
+					researchStudy.getId()));
+			}
 		}
 	}
 }
