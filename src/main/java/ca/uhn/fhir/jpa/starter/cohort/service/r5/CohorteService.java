@@ -1,5 +1,6 @@
 package ca.uhn.fhir.jpa.starter.cohort.service.r5;
 
+import ca.uhn.fhir.jpa.starter.datamart.service.r5.ResearchStudyUtils;
 import ca.uhn.fhir.rest.server.exceptions.ResourceNotFoundException;
 import org.hl7.fhir.r5.model.*;
 import org.opencds.cqf.fhir.api.Repository;
@@ -74,7 +75,7 @@ public class CohorteService {
 		CodeableConcept phase = new CodeableConcept();
 		phase.addCoding()
 			.setCode("post-cohorting")
-			.setSystem("https://www.centreantoinelacassagne.org/CodeSystem/COS-CustomStudyPhases");
+			.setSystem(ResearchStudyUtils.CUSTOM_PHASE_SYSTEM);
 		researchStudy.setPhase(phase);
 
 		repo.update(researchStudy);
