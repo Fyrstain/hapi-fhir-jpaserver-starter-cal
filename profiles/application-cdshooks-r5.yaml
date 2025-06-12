@@ -1,0 +1,10 @@
+hapi:
+  fhir:
+    cr:
+      enabled: true
+    cdshooks:
+      enabled: true
+      clientIdHeaderName: client_id
+    fhir_version: R5
+    custom-bean-packages:
+      - ca.uhn.fhir.jpa.starter.cdshooks.study
