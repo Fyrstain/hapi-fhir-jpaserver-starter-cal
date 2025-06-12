@@ -1,0 +1,13 @@
+services:
+  cdshooks:
+    image: docker.registry.fyrstain.com/socle/cdshooksengine:latest
+    container_name: cdshooksengine
+    restart: on-failure
+    environment:
+      SPRING_CONFIG_ADDITIONAL_LOCATION: "/profiles/"
+      SPRING_PROFILES_ACTIVE: "cdshooks-r5"
+    volumes:
+      - ./profiles:/profiles
+    ports:
+      - "8092:8080"
+
