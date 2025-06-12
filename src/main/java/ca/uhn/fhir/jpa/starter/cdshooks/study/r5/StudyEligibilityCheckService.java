@@ -39,7 +39,7 @@ public class StudyEligibilityCheckService {
 		title = "Research study eligibility verification.",
 		description = "Evaluate the inclusion criteria defined in a CQL Library.",
 		prefetch = {
-			@CdsServicePrefetch(value = "patientData", query = "Patient/{{context.patientId}}/$everything")
+			@CdsServicePrefetch(value = "patientData", query = "Patient/{{context.patientId}}")
 		})
 	public CdsServiceResponseJson exampleService(CdsServiceRequestJson theCdsRequest) {
 		Bundle patientData = (Bundle) theCdsRequest.getPrefetch("patientData");
