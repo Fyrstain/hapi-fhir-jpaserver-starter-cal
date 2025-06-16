@@ -1,6 +1,6 @@
 package ca.uhn.fhir.jpa.starter;
 
-import ca.uhn.fhir.jpa.starter.cdshooks.study.r5.RemoteCqlClient;
+import ca.uhn.fhir.jpa.starter.common.RemoteCqlClient;
 import ca.uhn.fhir.jpa.starter.cdshooks.study.r5.StudyEligibilityCheckService;
 import ca.uhn.fhir.rest.api.server.cdshooks.CdsServiceRequestContextJson;
 import ca.uhn.fhir.rest.api.server.cdshooks.CdsServiceRequestJson;

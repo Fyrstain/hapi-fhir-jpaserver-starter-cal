@@ -1,6 +1,7 @@
 package ca.uhn.fhir.jpa.starter.cdshooks.study.r5;
 
 import ca.uhn.fhir.context.FhirContext;
+import ca.uhn.fhir.jpa.starter.common.RemoteCqlClient;
 import ca.uhn.fhir.rest.api.server.cdshooks.CdsServiceRequestContextJson;
 import ca.uhn.fhir.rest.api.server.cdshooks.CdsServiceRequestJson;
 import ca.uhn.hapi.fhir.cdshooks.api.CdsService;
@@ -21,12 +22,6 @@ import java.util.UUID;
 public class StudyEligibilityCheckService {
 	private static final Logger LOG = LoggerFactory.getLogger(StudyEligibilityCheckService.class);
 
-	private RemoteCqlClient remoteCqlClient;
-
-	public void setRemoteCqlClient(RemoteCqlClient remoteCqlClient) {
-		this.remoteCqlClient = remoteCqlClient;
-	}
-
 	/**
 	 * Main CDS Hooks operation invoked on the patient-view hook.
 	 *
@@ -46,20 +41,19 @@ public class StudyEligibilityCheckService {
 		CdsServiceResponseJson response = new CdsServiceResponseJson();
 		CdsServiceResponseCardJson card = new CdsServiceResponseCardJson();
 
-		String fhirServer = theCdsRequest.getFhirServer();
 		CdsServiceRequestContextJson context = theCdsRequest.getContext();
-		String patientId = context.getString("patientId");
-		String libraryId = context.getString("libraryId");
-		String studyId = context.getString("studyId");
-		String inclusionExpression = context.getString("inclusionExpression");
-		String contentServer = context.getString("contentServer");
-		String terminologyServer = context.getString("terminologyServer");
-		String cqlEngineServer = context.getString("CQLEngineServer");
-
-		RemoteCqlClient cqlClient = this.remoteCqlClient != null
-			? this.remoteCqlClient
-			: new RemoteCqlClient(FhirContext.forR5(), cqlEngineServer);
 		try {
+			String fhirServer = theCdsRequest.getFhirServer();
+			String patientId = getRequiredContextField(context, "patientId");
+			String libraryId = getRequiredContextField(context, "libraryId");
+
+			String studyId = getRequiredContextField(context, "studyId");
+			String inclusionExpression = getRequiredContextField(context, "inclusionExpression");
+			String contentServer = getRequiredContextField(context, "contentServer");
+			String terminologyServer = context.getString("terminologyServer");
+			String cqlEngineServer = getRequiredContextField(context, "CQLEngineServer");
+
+			RemoteCqlClient cqlClient = new RemoteCqlClient(FhirContext.forR5(), cqlEngineServer);
 			boolean isEligible;
 			if (patientData != null) {
 				isEligible = cqlClient.evaluateInclusionExpression(
@@ -92,11 +86,13 @@ public class StudyEligibilityCheckService {
 				card.setDetail("Patient does not meet all inclusion criteria or has an exclusion condition.");
 			}
 
+		} catch (IllegalArgumentException e) {
+			LOG.error("Missing or invalid parameter: {}", e.getMessage());
+			card.setIndicator(CdsServiceIndicatorEnum.CRITICAL);
+			card.setSummary("Missing parameter error");
+			card.setDetail("Required parameter missing or invalid: " + e.getMessage());
 		} catch (Exception e) {
-			// Log the error with context for debugging
-			LOG.error("Error evaluating CQL expression for patient {} and study {}: {}", patientId, studyId, e.getMessage(), e);
-
-			// Build an error card
+			LOG.error("Error evaluating CQL for patient/study: {}", e.getMessage(), e);
 			card.setIndicator(CdsServiceIndicatorEnum.CRITICAL);
 			card.setSummary("Error evaluating eligibility");
 			card.setDetail("An unexpected error occurred while evaluating eligibility.");
@@ -109,6 +105,30 @@ public class StudyEligibilityCheckService {
 
 		response.addCard(card);
 		return response;
+	}
+
+	/**
+	 * Validate that the context contains a non-null, non-empty value for the given key.
+	 *
+	 * @param context   the CDS service context
+	 * @param fieldName the field name
+	 * @return the field value
+	 * @throws IllegalArgumentException if the value is missing or empty
+	 */
+	private String getRequiredContextField(CdsServiceRequestContextJson context, String fieldName) {
+		String value = context.getString(fieldName);
+		if (value == null || value.isBlank()) {
+			throw new IllegalArgumentException(fieldName);
+		}
+		return value;
+	}
+
+	private String getFhirServer(CdsServiceRequestJson request) {
+		String value = request.getFhirServer();
+		if (value == null || value.isBlank()) {
+			throw new IllegalArgumentException("fhirServer");
+		}
+		return value;
 	}
 
 	@CdsServiceFeedback("research-eligibility-check")
