@@ -70,7 +70,6 @@ public class StudyEligibilityCdsHooksContextBooter extends CdsHooksContextBooter
 				js.setTitle(ann.title());
 				js.setDescription(ann.description());
 				js.setExtension(validateJsonExtension(ann.extension()));
-				// Préfetchs éventuels
 				for (CdsServicePrefetch p : ann.prefetch()) {
 					js.addPrefetch(p.value(), p.query());
 					js.addSource(p.value(), p.source());
@@ -108,10 +107,10 @@ public class StudyEligibilityCdsHooksContextBooter extends CdsHooksContextBooter
 	@SuppressWarnings("unchecked")
 	public void start() {
 		if (studyDefinitionsClass == null) {
-			ourLog.info("Aucune classe de définitions fournie pour StudyEligibility");
+			ourLog.info("No definition class provided for StudyEligibility.");
 			return;
 		}
-		ourLog.info("Démarrage du ApplicationContext pour : {}", studyDefinitionsClass.getName());
+		ourLog.info("Starting the ApplicationContext for : {}", studyDefinitionsClass.getName());
 		studyAppCtx = new AnnotationConfigApplicationContext();
 		studyAppCtx.register(studyDefinitionsClass);
 		studyAppCtx.refresh();
@@ -121,12 +120,12 @@ public class StudyEligibilityCdsHooksContextBooter extends CdsHooksContextBooter
 				studyCdsServiceBeans = studyAppCtx.getBean(
 					STUDY_CDS_SERVICES_BEAN_NAME, List.class);
 			} else {
-				ourLog.info("Pas de bean nommé {}", STUDY_CDS_SERVICES_BEAN_NAME);
+				ourLog.info("No bean named {}", STUDY_CDS_SERVICES_BEAN_NAME);
 			}
 
 			if (studyCdsServiceBeans.isEmpty()) {
 				throw new ConfigurationException(Msg.code(2379)
-					+ "Aucun CDS Service trouvé (bean appelé "
+					+ "No CDS Service found (bean named "
 					+ STUDY_CDS_SERVICES_BEAN_NAME + ")");
 			}
 		} catch (Exception e) {
