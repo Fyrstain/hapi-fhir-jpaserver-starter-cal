@@ -1,5 +1,7 @@
 package ca.uhn.fhir.jpa.starter.cohort.service.r5;
 
+import ca.uhn.fhir.jpa.starter.common.RemoteCqlClient;
+import ca.uhn.fhir.jpa.starter.datamart.service.r5.ResearchStudyUtils;
 import ca.uhn.fhir.rest.server.exceptions.ResourceNotFoundException;
 import org.hl7.fhir.r5.model.*;
 import org.opencds.cqf.fhir.api.Repository;
@@ -31,7 +33,8 @@ public class CohorteService {
 		CanonicalType researchStudyUrl,
 		Endpoint researchStudyEndpoint,
 		Endpoint dataEndpoint,
-		Endpoint terminologyEndpoint) {
+		Endpoint terminologyEndpoint,
+		Endpoint cqlEngineEndpoint) {
 		Repository repo = Repositories.proxy(repository, false, dataEndpoint, researchStudyEndpoint, terminologyEndpoint);
 		Bundle b = repo.search(Bundle.class, ResearchStudy.class, Searches.byCanonical(researchStudyUrl.getCanonical()), null);
 		if (b.getEntry().isEmpty()) {
@@ -39,9 +42,24 @@ public class CohorteService {
 			throw new ResourceNotFoundException(errorMsg);
 		}
 		ResearchStudy researchStudy = (ResearchStudy) b.getEntry().get(0).getResource();
-		CohorteProcessor cohorteProcessor = new CohorteProcessor(repo, settings, new RepositorySubjectProvider());
-		Group group = cohorteProcessor.cohorting(researchStudy);
+
+		Parameters evaluateParams = new Parameters();
+		evaluateParams.addParameter()
+			.setName("dataEndpoint")
+			.setResource(dataEndpoint);
+		evaluateParams.addParameter()
+			.setName("contentEndpoint")
+			.setResource(researchStudyEndpoint);
+		evaluateParams.addParameter()
+			.setName("terminologyEndpoint")
+			.setResource(terminologyEndpoint);
+
+		RemoteCqlClient cqlClient = new RemoteCqlClient(cqlEngineEndpoint, repo);
+
+		CohorteProcessor cohorteProcessor = new CohorteProcessor(repo, cqlClient, new RepositorySubjectProvider());
+		Group group = cohorteProcessor.cohorting(researchStudy, evaluateParams);
 		buildAndSaveGroup(repo, group, researchStudy);
+
 		updateResearchStudyWithGroup(repo, researchStudy, group);
 		return group;
 	}
@@ -58,7 +76,7 @@ public class CohorteService {
 		CodeableConcept phase = new CodeableConcept();
 		phase.addCoding()
 			.setCode("post-cohorting")
-			.setSystem("https://www.centreantoinelacassagne.org/CodeSystem/COS-CustomStudyPhases");
+			.setSystem(ResearchStudyUtils.CUSTOM_PHASE_SYSTEM);
 		researchStudy.setPhase(phase);
 
 		repo.update(researchStudy);

@@ -11,7 +11,7 @@ public class CohorteEvaluationOptions {
 	private Map<String, ValidationProfile> validationProfiles = new HashMap();
 	private EvaluationSettings evaluationSettings = null;
 
-	private CohorteEvaluationOptions() {
+	public CohorteEvaluationOptions() {
 	}
 
 	public static CohorteEvaluationOptions defaultOptions() {

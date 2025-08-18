@@ -4,8 +4,10 @@ import ca.uhn.fhir.context.FhirContext;
 import ca.uhn.fhir.rest.client.api.IGenericClient;
 import ca.uhn.fhir.rest.client.api.ServerValidationModeEnum;
 import org.hl7.fhir.r5.model.*;
+import org.opencds.cqf.fhir.api.Repository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.scheduling.annotation.Async;
 
 public class RemoteCqlClient {
 	private static final Logger logger = LoggerFactory.getLogger(RemoteCqlClient.class);
@@ -16,6 +18,29 @@ public class RemoteCqlClient {
 			ServerValidationModeEnum.NEVER
 		);
 		this.client = fhirContext.newRestfulGenericClient(cqlEndpoint);
+	}
+
+	public RemoteCqlClient(Endpoint endpoint, Repository repository) {
+		FhirContext ctx = repository.fhirContext();
+		var factory = ctx.getRestfulClientFactory();
+		factory.setServerValidationMode(ServerValidationModeEnum.NEVER);
+		ctx.getRestfulClientFactory().setServerValidationMode(
+			ServerValidationModeEnum.NEVER
+		);
+		this.client = ctx.newRestfulGenericClient(endpoint.getAddress());
+	}
+	@Async
+	public Parameters evaluateLibrary(
+		Parameters parameters, String libraryId
+	) {
+		Parameters outParams = client
+			.operation()
+			.onInstance(new IdType("Library", libraryId))
+			.named("$evaluate")
+			.withParameters(parameters)
+			.returnResourceType(Parameters.class)
+			.execute();
+		return outParams;
 	}
 
 	public Parameters evaluateLibrary(

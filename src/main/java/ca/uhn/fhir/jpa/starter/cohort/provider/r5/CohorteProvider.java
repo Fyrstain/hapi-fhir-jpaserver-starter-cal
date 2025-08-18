@@ -41,8 +41,9 @@ public class CohorteProvider {
 		@OperationParam(name = "researchStudyUrl") CanonicalType researchStudyUrl,
 		@OperationParam(name = "researchStudyEndpoint") Endpoint researchStudyEndpoint,
 		@OperationParam(name = "dataEndpoint") Endpoint dataEndpoint,
-		@OperationParam(name = "terminologyEndpoint") Endpoint theTerminologyEndpoint) {
+		@OperationParam(name = "terminologyEndpoint") Endpoint theTerminologyEndpoint,
+		@OperationParam(name = "cqlEngineEndpoint") Endpoint cqlEngineEndpoint) {
 		return new CohorteService(new RestRepository(context.getRestfulClientFactory().newGenericClient(remoteUrl)), CohorteEvaluationOptions.defaultOptions())
-			.cohorting(researchStudyUrl, researchStudyEndpoint, dataEndpoint, theTerminologyEndpoint);
+			.cohorting(researchStudyUrl, researchStudyEndpoint, dataEndpoint, theTerminologyEndpoint, cqlEngineEndpoint);
 	}
 }

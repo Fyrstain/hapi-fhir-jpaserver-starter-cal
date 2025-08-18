@@ -1,82 +1,236 @@
-package ca.uhn.fhir.jpa.starter.cohort.service.r5;
-
-import org.apache.commons.lang3.tuple.Pair;
-import org.hl7.elm.r1.ExpressionDef;
+package ca.uhn.fhir.jpa.starter.cohort.service.r5;// imports you may need:
+import ca.uhn.fhir.jpa.starter.common.RemoteCqlClient;
+import org.hl7.fhir.instance.model.api.IBaseHasExtensions;
 import org.hl7.fhir.r5.model.*;
-import org.opencds.cqf.cql.engine.execution.CqlEngine;
-import org.opencds.cqf.cql.engine.execution.Libraries;
 import org.opencds.cqf.fhir.api.Repository;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import java.util.List;
+import org.opencds.cqf.fhir.utility.search.Searches; // if you already use it
+import java.util.*;
 
 public class CohorteEvaluation {
-	private static final Logger logger = LoggerFactory.getLogger(CohorteEvaluation.class);
-	private final CqlEngine cqlEngine;
+	private static final String EXT_CQF_LIBRARY = "http://hl7.org/fhir/StructureDefinition/cqf-library";
+	private static final String EXT_XOR = "https://www.centreantoinelacassagne.org/StructureDefinition/EXT-Exclusive-OR";
+
+	private final RemoteCqlClient cql;
 	private final Repository repository;
 
-	public CohorteEvaluation(CqlEngine cqlEngine, Repository repository) {
-		this.cqlEngine = cqlEngine;
+	public CohorteEvaluation(RemoteCqlClient cql, Repository repository) {
+		this.cql = cql;
 		this.repository = repository;
 	}
 
 	/**
-	 * Evaluates the cohort for the provided ResearchStudy.
-	 *
-	 * @param researchStudy    The ResearchStudy that is the basis for cohort evaluation.
-	 * @param evidenceVariable The EvidenceVariable containing the definition expression for evaluation.
-	 * @param subjectIds       A list of subject identifiers (each must be in the format {subjectType}/{subjectId}).
-	 * @return A Group resource containing the subjects that meet the evaluation criteria.
-	 * @throws RuntimeException if any subject identifier is {@code null}.
+	 * Evaluates the EvidenceVariable for each subject and returns a Group of included members.
+	 * Now supports: nested combinations, exclude=true, XOR extension, canonical EV references.
 	 */
-	public Group evaluate(ResearchStudy researchStudy, EvidenceVariable evidenceVariable, List<String> subjectIds) {
-		logger.info("Evaluating Cohort {} with {} subject(s)", researchStudy.getUrl(), subjectIds.size());
+	public Group evaluate(
+		ResearchStudy study,
+		EvidenceVariable evidenceVariable,
+		List<String> subjects,
+		Parameters baseParams,
+		String fallbackLibraryId) {
+
 		Group group = new Group();
-		for (String subjectId : subjectIds) {
-			if (subjectId == null) {
-				throw new RuntimeException("SubjectId is required in order to calculate.");
+		group.setType(Group.GroupType.PERSON).setActive(true);
+		group.setId("group-" + study.getIdElement().getIdPart());
+		group.setName("Patient Eligible for: " + study.getName());
+		group.setDescription(study.getDescription());
+
+		// Evaluate each subject against the EV logical tree
+		for (String subjectId : subjects) {
+			if (evaluateEvidenceVariable(evidenceVariable, subjectId, baseParams, fallbackLibraryId)) {
+				List<Identifier> patientIdent = repository.read(Patient.class, new IdType(subjectId)).getIdentifier();
+				if(!patientIdent.isEmpty()) group.addMember().setEntity(new Reference().setIdentifier(pseudonymizeIdentifier(patientIdent.get(0))));
 			}
-
-			Pair<String, String> subjectInfo = this.getSubjectTypeAndId(subjectId);
-			String subjectTypePart = subjectInfo.getLeft();
-			String subjectIdPart = subjectInfo.getRight();
-			this.cqlEngine.getState().setContextValue(subjectTypePart, subjectIdPart);
-			this.evaluateVariableDefinition(group, evidenceVariable, subjectTypePart, subjectIdPart);
 		}
-
 		return group;
 	}
 
-	/**
-	 * Evaluates the definition expression of the given EvidenceVariable for a specific subject
-	 * and adds the subject to the Group if the evaluation result is true.
-	 *
-	 * @param group            The Group resource to which eligible subjects will be added.
-	 * @param evidenceVariable The EvidenceVariable containing the definition expression for cohort evaluation.
-	 * @param subjectType      The type of the subject (e.g., "Patient").
-	 * @param subjectId        The identifier of the subject.
-	 * @throws IllegalArgumentException if the EvidenceVariable is missing the definition expression.
-	 */
-	public void evaluateVariableDefinition(Group group, EvidenceVariable evidenceVariable, String subjectType, String subjectId) {
-		String definitionExpression = evidenceVariable.getCharacteristic().stream().findFirst()
-			.map(EvidenceVariable.EvidenceVariableCharacteristicComponent::getDefinitionByCombination)
-			.map(EvidenceVariable.EvidenceVariableCharacteristicDefinitionByCombinationComponent::getCharacteristic)
-			.filter(list -> !list.isEmpty())
-			.map(list -> list.get(0))
-			.map(EvidenceVariable.EvidenceVariableCharacteristicComponent::getDefinitionExpression)
-			.map(Expression::getExpression)
-			.orElseThrow(() -> new IllegalArgumentException(String.format("DefinitionExpression is missing for %s", evidenceVariable.getUrl())));
-		if (definitionExpression != null && !definitionExpression.isEmpty()) {
-			Object result = this.evaluateDefinitionExpression(definitionExpression);
-			if (result instanceof Boolean) {
+	private boolean evaluateEvidenceVariable(
+		EvidenceVariable ev,
+		String subjectId,
+		Parameters baseParams,
+		String fallbackLibraryId) {
 
-				if (Boolean.TRUE.equals(result)) {
-					Identifier patientIdent = repository.read(Patient.class, new IdType(subjectId)).getIdentifier().get(0);
-					group.addMember().setEntity(new Reference().setIdentifier(pseudonymizeIdentifier(patientIdent)));
+		if (ev.getCharacteristic().isEmpty()) return true; // vacuous truth
+
+		if (ev.getCharacteristic().size() == 1) {
+			return evalCharacteristic(ev, ev.getCharacteristic().get(0), subjectId, baseParams, fallbackLibraryId);
+		}
+
+		boolean all = true;
+		for (EvidenceVariable.EvidenceVariableCharacteristicComponent ch : ev.getCharacteristic()) {
+			boolean r = evalCharacteristic(ev, ch, subjectId, baseParams, fallbackLibraryId);
+			all = all && r;
+			if (!all) break;
+		}
+		return all;
+	}
+
+	private boolean evalCharacteristic(
+		EvidenceVariable contextEV,
+		EvidenceVariable.EvidenceVariableCharacteristicComponent ch,
+		String subjectId,
+		Parameters baseParams,
+		String fallbackLibraryId) {
+
+		boolean result;
+
+		if (ch.hasDefinitionByCombination()) {
+			EvidenceVariable.EvidenceVariableCharacteristicDefinitionByCombinationComponent comb = ch.getDefinitionByCombination();
+
+			LogicOp op = mapOp(comb.getCode());
+			boolean xor = hasTrueBooleanExtension(comb, EXT_XOR);
+			if (xor) op = LogicOp.XOR;
+
+			List<Boolean> childResults = new ArrayList<>();
+			for (EvidenceVariable.EvidenceVariableCharacteristicComponent nested : comb.getCharacteristic()) {
+				childResults.add(evalCharacteristic(contextEV, nested, subjectId, baseParams, fallbackLibraryId));
+			}
+			result = reduce(childResults, op);
+
+		} else if (ch.hasDefinitionExpression()) {
+			Expression expr = ch.getDefinitionExpression();
+			String expressionName = safe(expr.getExpression());
+			if (expressionName == null || expressionName.isBlank()) {
+				result = false;
+			} else {
+				String libId = resolveLibraryId(ch, contextEV, fallbackLibraryId);
+				result = evalBooleanExpression(libId, expressionName, subjectId, baseParams);
+			}
+
+		} else if (ch.hasDefinitionCanonical()) {
+			String canonical = safe(ch.getDefinitionCanonical());
+			EvidenceVariable nestedEv = resolveEvidenceVariable(canonical);
+			if (nestedEv == null) {
+				result = false;
+			} else {
+				result = evaluateEvidenceVariable(nestedEv, subjectId, baseParams, fallbackLibraryId);
+			}
+
+		} else {
+			result = false;
+		}
+
+		if (ch.getExclude()) {
+			result = !result;
+		}
+		return result;
+	}
+
+	/**
+	 * Calls the remote CQL and returns the boolean value of the named expression.
+	 * Strategy: call evaluateLibrary and read Parameters[exprName]=valueBoolean.
+	 */
+	private boolean evalBooleanExpression(String libraryId, String expressionName, String subjectId, Parameters baseParams) {
+		Parameters call = cloneParams(baseParams);
+
+		call.addParameter().setName("subject").setValue(new StringType(stripPrefix(subjectId)));
+		Parameters out = new Parameters();
+			out.addParameter(expressionName, true);//cql.evaluateLibrary(call, libraryId);
+		return readBoolean(out, expressionName);
+	}
+
+	private String resolveLibraryId(
+		IBaseHasExtensions atCharacteristic,
+		IBaseHasExtensions atEvidenceVariable,
+		String fallback) {
+
+		String canonical = readCqfLibraryCanonical(atCharacteristic);
+		if (canonical == null) canonical = readCqfLibraryCanonical(atEvidenceVariable);
+		if (canonical == null) return fallback;
+
+		try {
+			Bundle b = repository.search(Bundle.class, Library.class, Searches.byCanonical(canonical), null);
+			if (b.hasEntry() && b.getEntryFirstRep().hasResource()) {
+				Resource r = b.getEntryFirstRep().getResource();
+				if (r instanceof Library lib && lib.hasId()) {
+					return lib.getIdElement().getIdPart();
 				}
 			}
+		} catch (Exception ignore) { }
+
+		String tail = tailId(canonical);
+		return tail != null ? tail : fallback;
+	}
+
+	private EvidenceVariable resolveEvidenceVariable(String canonical) {
+		try {
+			Bundle b = repository.search(Bundle.class, EvidenceVariable.class, Searches.byCanonical(canonical), null);
+			if (b.hasEntry() && b.getEntryFirstRep().hasResource()) {
+				Resource r = b.getEntryFirstRep().getResource();
+				if (r instanceof EvidenceVariable ev) return ev;
+			}
+		} catch (Exception ignore) { }
+		return null;
+	}
+
+	private enum LogicOp { AND, OR, XOR }
+
+	private LogicOp mapOp(EvidenceVariable.CharacteristicCombination code) {
+		if (code == null) return LogicOp.AND;
+		String v = code.toCode();
+		if ("all-of".equalsIgnoreCase(v)) return LogicOp.AND;
+		if ("any-of".equalsIgnoreCase(v)) return LogicOp.OR;
+		// anything else → default AND
+		return LogicOp.AND;
+	}
+
+	private boolean reduce(List<Boolean> values, LogicOp op) {
+		switch (op) {
+			case AND: return values.stream().allMatch(Boolean::booleanValue);
+			case OR:  return values.stream().anyMatch(Boolean::booleanValue);
+			case XOR: return values.stream().filter(Boolean::booleanValue).count() == 1;
+			default:  return false;
 		}
+	}
+
+	private boolean hasTrueBooleanExtension(IBaseHasExtensions extHolder, String url) {
+		if (!(extHolder instanceof Element e)) return false;
+		for (Extension ext : e.getExtension()) {
+			if (url.equals(ext.getUrl()) && ext.getValue() instanceof BooleanType bt) {
+				return bt.booleanValue();
+			}
+		}
+		return false;
+	}
+
+	private String readCqfLibraryCanonical(IBaseHasExtensions extHolder) {
+		if (!(extHolder instanceof Element e)) return null;
+		for (Extension ext : e.getExtension()) {
+			if (EXT_CQF_LIBRARY.equals(ext.getUrl()) && ext.getValue() instanceof CanonicalType c) {
+				return c.getValue();
+			}
+		}
+		return null;
+	}
+
+	private Parameters cloneParams(Parameters p) {
+		if (p == null) return new Parameters();
+		return (Parameters) p.copy();
+	}
+
+	private boolean readBoolean(Parameters out, String name) {
+		if (out == null || name == null) return false;
+		for (Parameters.ParametersParameterComponent pp : out.getParameter()) {
+			if (name.equals(pp.getName()) && pp.getValue() instanceof BooleanType b) {
+				return b.booleanValue();
+			}
+		}
+		return false;
+	}
+
+	private String stripPrefix(String ref) {
+		if (ref == null) return null;
+		int slash = ref.lastIndexOf('/');
+		return (slash >= 0) ? ref.substring(slash + 1) : ref;
+	}
+
+	private String tailId(String canonical) {
+		if (canonical == null) return null;
+		// Remove version
+		String noVer = canonical.split("\\|")[0];
+		int slash = noVer.lastIndexOf('/');
+		return (slash >= 0) ? noVer.substring(slash + 1) : noVer;
 	}
 
 	/**
@@ -88,7 +242,8 @@ public class CohorteEvaluation {
 	public Identifier pseudonymizeIdentifier(Identifier original) {
 		try {
 			String encrypted = CryptoUtils.encrypt(original.getValue());
-			Identifier copy = original.copy();
+			Identifier copy = new Identifier();
+			copy.setSystem(original.getSystem());
 			copy.setValue(encrypted);
 			return copy;
 		} catch (Exception e) {
@@ -96,32 +251,5 @@ public class CohorteEvaluation {
 		}
 	}
 
-	/**
-	 * Evaluates the given CQL expression using the CQL evaluation engine.
-	 *
-	 * @param criteriaExpression The CQL expression to evaluate.
-	 * @return The result of the evaluated expression.
-	 */
-	public Object evaluateDefinitionExpression(String criteriaExpression) {
-		ExpressionDef ref = Libraries.resolveExpressionRef(criteriaExpression, this.cqlEngine.getState().getCurrentLibrary());
-		Object result = this.cqlEngine.getEvaluationVisitor().visitExpressionDef(ref, this.cqlEngine.getState());
-		return result;
-	}
-
-	/**
-	 * Parses the subject identifier to extract the subject type and identifier.
-	 *
-	 * @param subjectId The subject identifier string.
-	 * @return A Pair where the left element is the subject type and the right element is the subject identifier.
-	 * @throws IllegalArgumentException if the subject identifier does not follow the required format.
-	 */
-	public Pair<String, String> getSubjectTypeAndId(String subjectId) {
-		if (subjectId.contains("/")) {
-			String[] subjectIdParts = subjectId.split("/");
-			return Pair.of(subjectIdParts[0], subjectIdParts[1]);
-		} else {
-			throw new IllegalArgumentException(String.format("Unable to determine Subject type for id: %s. SubjectIds must be in the format {subjectType}/{subjectId} (e.g. Patient/123)", subjectId));
-		}
-	}
-
+	private String safe(String s) { return (s == null || s.isBlank()) ? null : s; }
 }

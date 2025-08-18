@@ -1,11 +1,9 @@
 package ca.uhn.fhir.jpa.starter.cohort.service.r5;
 
+import ca.uhn.fhir.jpa.starter.common.RemoteCqlClient;
 import ca.uhn.fhir.rest.server.exceptions.ResourceNotFoundException;
-import org.cqframework.cql.cql2elm.CqlIncludeException;
-import org.cqframework.cql.cql2elm.model.CompiledLibrary;
 import org.hl7.fhir.r5.model.*;
 import org.opencds.cqf.fhir.api.Repository;
-import org.opencds.cqf.fhir.cql.Engines;
 import org.opencds.cqf.fhir.cql.VersionedIdentifiers;
 import org.opencds.cqf.fhir.utility.search.Searches;
 
@@ -14,13 +12,13 @@ import java.util.stream.Collectors;
 
 public class CohorteProcessor {
 	private final Repository repository;
-	private final CohorteEvaluationOptions settings;
+	private final ca.uhn.fhir.jpa.starter.common.RemoteCqlClient cqlClient;
 	private final RepositorySubjectProvider subjectProvider;
 
 
-	public CohorteProcessor(Repository repository, CohorteEvaluationOptions settings, RepositorySubjectProvider subjectProvider) {
+	public CohorteProcessor(Repository repository, RemoteCqlClient cqlClient, RepositorySubjectProvider subjectProvider) {
 		this.repository = repository;
-		this.settings = settings;
+		this.cqlClient = cqlClient;
 		this.subjectProvider = subjectProvider;
 	}
 
@@ -36,7 +34,7 @@ public class CohorteProcessor {
 	 * @throws IllegalStateException     if the CQL/ELM library cannot be resolved or loaded due to a CQL include exception.
 	 */
 	public Group cohorting(
-		ResearchStudy researchStudy
+		ResearchStudy researchStudy, Parameters evaluateParams
 	) {
 		if (!researchStudy.getRecruitment().hasEligibility()) {
 			throw new IllegalArgumentException(
@@ -66,8 +64,8 @@ public class CohorteProcessor {
 			throw new ResourceNotFoundException(errorMsg);
 		}
 
-		var id = VersionedIdentifiers.forUrl(libraryUrl);
-		var context = Engines.forRepository(this.repository, this.settings.getEvaluationSettings(), null);
+		var libId = VersionedIdentifiers.forUrl(libraryUrl).getId();
+		/*var context = Engines.forRepository(repository, settings.getEvaluationSettings(), null);
 
 		CompiledLibrary lib;
 		try {
@@ -80,10 +78,11 @@ public class CohorteProcessor {
 				e);
 		}
 
-		context.getState().init(lib.getLibrary());
+		context.getState().init(lib.getLibrary());*/
 		var subjects =
 			subjectProvider.getSubjects(repository, (List<String>) null).collect(Collectors.toList());
-		CohorteEvaluation cohorteEvaluation = new CohorteEvaluation(context, repository);
-		return cohorteEvaluation.evaluate(researchStudy, evidenceVariable, subjects);
+
+		CohorteEvaluation cohorteEvaluation = new CohorteEvaluation(cqlClient, repository);
+		return cohorteEvaluation.evaluate(researchStudy, evidenceVariable, subjects, evaluateParams, libId);
 	}
 }
