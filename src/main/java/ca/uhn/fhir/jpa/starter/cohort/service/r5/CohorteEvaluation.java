@@ -181,8 +181,7 @@ public class CohorteEvaluation {
 		Parameters evaluateParam = cloneParams(baseParams);
 
 		evaluateParam.addParameter().setName("subject").setValue(new StringType(stripPrefix(subjectId)));
-		Parameters out = new Parameters();
-		out.addParameter(expressionName, true);//cql.evaluateLibrary(call, libraryId);
+		Parameters out = cql.evaluateLibrary(evaluateParam, libraryId);
 		return readBoolean(out, expressionName);
 	}
 
