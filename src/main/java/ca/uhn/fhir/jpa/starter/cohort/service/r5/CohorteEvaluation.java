@@ -1,15 +1,25 @@
 package ca.uhn.fhir.jpa.starter.cohort.service.r5;// imports you may need:
+
 import ca.uhn.fhir.jpa.starter.common.RemoteCqlClient;
+import ca.uhn.fhir.rest.server.exceptions.InvalidRequestException;
+import ca.uhn.fhir.rest.server.exceptions.ResourceNotFoundException;
+import ca.uhn.fhir.rest.server.exceptions.UnprocessableEntityException;
 import org.hl7.fhir.instance.model.api.IBaseHasExtensions;
 import org.hl7.fhir.r5.model.*;
 import org.opencds.cqf.fhir.api.Repository;
-import org.opencds.cqf.fhir.utility.search.Searches; // if you already use it
-import java.util.*;
+import org.opencds.cqf.fhir.utility.search.Searches;
+
+import java.util.ArrayList;
+import java.util.List;
 
 public class CohorteEvaluation {
 	private static final String EXT_CQF_LIBRARY = "http://hl7.org/fhir/StructureDefinition/cqf-library";
 	private static final String EXT_XOR = "https://www.centreantoinelacassagne.org/StructureDefinition/EXT-Exclusive-OR";
+	private static final String EXT_EV_PARAM = "https://www.centreantoinelacassagne.org/StructureDefinition/EXT-EVParametrisation";
 
+	// Sub-extensions inside the container:
+	private static final String SUB_NAME = "name";
+	private static final String SUB_VALUE = "value";
 	private final RemoteCqlClient cql;
 	private final Repository repository;
 
@@ -21,6 +31,16 @@ public class CohorteEvaluation {
 	/**
 	 * Evaluates the EvidenceVariable for each subject and returns a Group of included members.
 	 * Now supports: nested combinations, exclude=true, XOR extension, canonical EV references.
+	 *
+	 * @param study             {@link ResearchStudy} used for Group metadata (id/name/description)
+	 * @param evidenceVariable  root EvidenceVariable to evaluate (can be composite)
+	 * @param subjects          list of subject references (e.g., {@code Patient/{id}})
+	 * @param baseParams        base {@link Parameters} passed to the remote engine; may include endpoints or other flags
+	 * @param fallbackLibraryId library id used
+	 * @return a {@link Group} with included members
+	 * @throws InvalidRequestException      on invalid EV authoring (e.g., missing expression name)
+	 * @throws ResourceNotFoundException    when a canonical EV cannot be resolved
+	 * @throws UnprocessableEntityException when the remote result cannot be interpreted as boolean
 	 */
 	public Group evaluate(
 		ResearchStudy study,
@@ -35,51 +55,74 @@ public class CohorteEvaluation {
 		group.setName("Patient Eligible for: " + study.getName());
 		group.setDescription(study.getDescription());
 
-		// Evaluate each subject against the EV logical tree
 		for (String subjectId : subjects) {
 			if (evaluateEvidenceVariable(evidenceVariable, subjectId, baseParams, fallbackLibraryId)) {
 				List<Identifier> patientIdent = repository.read(Patient.class, new IdType(subjectId)).getIdentifier();
-				if(!patientIdent.isEmpty()) group.addMember().setEntity(new Reference().setIdentifier(pseudonymizeIdentifier(patientIdent.get(0))));
+				if (!patientIdent.isEmpty())
+					group.addMember().setEntity(new Reference().setIdentifier(pseudonymizeIdentifier(patientIdent.get(0))));
 			}
 		}
 		return group;
 	}
 
+	/**
+	 * Recursively evaluates an {@link EvidenceVariable}.
+	 *
+	 * @param variable          current EvidenceVariable node
+	 * @param subjectId         subject reference
+	 * @param baseParams        base parameters to pass to the remote engine and extended with expression parameters
+	 * @param fallbackLibraryId fallback library id.
+	 * @return {@code true} if the EV holds for the subject
+	 */
 	private boolean evaluateEvidenceVariable(
-		EvidenceVariable ev,
+		EvidenceVariable variable,
 		String subjectId,
 		Parameters baseParams,
 		String fallbackLibraryId) {
 
-		if (ev.getCharacteristic().isEmpty()) return true; // vacuous truth
+		if (variable.getCharacteristic().isEmpty()) return true; // vacuous truth
 
-		if (ev.getCharacteristic().size() == 1) {
-			return evalCharacteristic(ev, ev.getCharacteristic().get(0), subjectId, baseParams, fallbackLibraryId);
+		if (variable.getCharacteristic().size() == 1) {
+			return evalCharacteristic(variable, variable.getCharacteristic().get(0), subjectId, baseParams, fallbackLibraryId);
 		}
 
 		boolean all = true;
-		for (EvidenceVariable.EvidenceVariableCharacteristicComponent ch : ev.getCharacteristic()) {
-			boolean r = evalCharacteristic(ev, ch, subjectId, baseParams, fallbackLibraryId);
+		for (EvidenceVariable.EvidenceVariableCharacteristicComponent characteristic : variable.getCharacteristic()) {
+			boolean r = evalCharacteristic(variable, characteristic, subjectId, baseParams, fallbackLibraryId);
 			all = all && r;
 			if (!all) break;
 		}
 		return all;
 	}
 
+	/**
+	 * Evaluates a single characteristic node.
+	 *
+	 * @param contextEV         parent EV (used for library resolution and context in error messages)
+	 * @param characteristic    characteristic to evaluate
+	 * @param subjectId         subject reference
+	 * @param baseParams        base parameters to augment and forward to the remote engine
+	 * @param fallbackLibraryId fallback library id if no {@code cqf-library} is present
+	 * @return {@code true} if this node evaluates to true
+	 * @throws InvalidRequestException       when an expression name is missing or definitionCanonical is blank
+	 * @throws UnsupportedOperationException when a {@code characteristic.definition[x]} type is not supported yet
+	 * @throws ResourceNotFoundException     when a referenced EV canonical cannot be resolved
+	 * @throws UnprocessableEntityException  when the remote result for an expression is not boolean
+	 */
 	private boolean evalCharacteristic(
 		EvidenceVariable contextEV,
-		EvidenceVariable.EvidenceVariableCharacteristicComponent ch,
+		EvidenceVariable.EvidenceVariableCharacteristicComponent characteristic,
 		String subjectId,
 		Parameters baseParams,
 		String fallbackLibraryId) {
 
 		boolean result;
 
-		if (ch.hasDefinitionByCombination()) {
-			EvidenceVariable.EvidenceVariableCharacteristicDefinitionByCombinationComponent comb = ch.getDefinitionByCombination();
+		if (characteristic.hasDefinitionByCombination()) {
+			EvidenceVariable.EvidenceVariableCharacteristicDefinitionByCombinationComponent comb = characteristic.getDefinitionByCombination();
 
 			LogicOp op = mapOp(comb.getCode());
-			boolean xor = hasTrueBooleanExtension(comb, EXT_XOR);
+			boolean xor = hasXorExtension(comb);
 			if (xor) op = LogicOp.XOR;
 
 			List<Boolean> childResults = new ArrayList<>();
@@ -88,48 +131,69 @@ public class CohorteEvaluation {
 			}
 			result = reduce(childResults, op);
 
-		} else if (ch.hasDefinitionExpression()) {
-			Expression expr = ch.getDefinitionExpression();
+		} else if (characteristic.hasDefinitionExpression()) {
+			Expression expr = characteristic.getDefinitionExpression();
+			if (expr.hasExtension(EXT_EV_PARAM)) {
+				baseParams = addExpressionParameters(expr, baseParams);
+			}
 			String expressionName = safe(expr.getExpression());
 			if (expressionName == null || expressionName.isBlank()) {
-				result = false;
+				throw new InvalidRequestException(String.format(
+					"Expression is missing for EvidenceVariable '%s' (characteristic linkId='%s').",
+					contextEV.getUrl(),
+					characteristic.getLinkId())
+				);
 			} else {
-				String libId = resolveLibraryId(ch, contextEV, fallbackLibraryId);
+				String libId = resolveLibraryId(characteristic, contextEV, fallbackLibraryId);
 				result = evalBooleanExpression(libId, expressionName, subjectId, baseParams);
 			}
 
-		} else if (ch.hasDefinitionCanonical()) {
-			String canonical = safe(ch.getDefinitionCanonical());
+		} else if (characteristic.hasDefinitionCanonical()) {
+			String canonical = safe(characteristic.getDefinitionCanonical());
 			EvidenceVariable nestedEv = resolveEvidenceVariable(canonical);
-			if (nestedEv == null) {
-				result = false;
-			} else {
-				result = evaluateEvidenceVariable(nestedEv, subjectId, baseParams, fallbackLibraryId);
-			}
-
+			result = evaluateEvidenceVariable(nestedEv, subjectId, baseParams, fallbackLibraryId);
 		} else {
-			result = false;
+			throw new UnsupportedOperationException(String.format(
+				"This type of 'characteristic.definition[x]' is not supported yet for EvidenceVariable '%s' "
+					+ "(characteristic linkId='%s'). Supported: definitionExpression, definitionCanonical, definitionByCombination.",
+				contextEV,
+				characteristic.getLinkId()
+			));
 		}
 
-		if (ch.getExclude()) {
+		if (characteristic.getExclude()) {
 			result = !result;
 		}
 		return result;
 	}
 
 	/**
-	 * Calls the remote CQL and returns the boolean value of the named expression.
-	 * Strategy: call evaluateLibrary and read Parameters[exprName]=valueBoolean.
+	 * Invokes the remote CQL engine for a boolean expression.
+	 *
+	 * @param libraryId      resolved Library id
+	 * @param expressionName CQL identifier to evaluate
+	 * @param subjectId      subject reference (e.g., {@code Patient/123})
+	 * @param baseParams     base parameters (possibly already containing endpoints and expression parameters)
+	 * @return boolean outcome of the expression
+	 * @throws UnprocessableEntityException when the returned value is not boolean or the parameter is missing
 	 */
 	private boolean evalBooleanExpression(String libraryId, String expressionName, String subjectId, Parameters baseParams) {
-		Parameters call = cloneParams(baseParams);
+		Parameters evaluateParam = cloneParams(baseParams);
 
-		call.addParameter().setName("subject").setValue(new StringType(stripPrefix(subjectId)));
+		evaluateParam.addParameter().setName("subject").setValue(new StringType(stripPrefix(subjectId)));
 		Parameters out = new Parameters();
-			out.addParameter(expressionName, true);//cql.evaluateLibrary(call, libraryId);
+		out.addParameter(expressionName, true);//cql.evaluateLibrary(call, libraryId);
 		return readBoolean(out, expressionName);
 	}
 
+	/**
+	 * Resolves the Library id to use for an expression
+	 *
+	 * @param atCharacteristic   node to check first for {@code cqf-library}
+	 * @param atEvidenceVariable parent EV if not present on the node
+	 * @param fallback           fallback library id
+	 * @return a concrete library id to call
+	 */
 	private String resolveLibraryId(
 		IBaseHasExtensions atCharacteristic,
 		IBaseHasExtensions atEvidenceVariable,
@@ -147,55 +211,92 @@ public class CohorteEvaluation {
 					return lib.getIdElement().getIdPart();
 				}
 			}
-		} catch (Exception ignore) { }
+		} catch (Exception ignore) {
+		}
 
 		String tail = tailId(canonical);
 		return tail != null ? tail : fallback;
 	}
 
+	/**
+	 * Resolves an {@link EvidenceVariable} by canonical URL (optionally versioned).
+	 * This implementation uses a repository search by canonical and returns the first entry.
+	 *
+	 * @param canonical canonical URL, possibly with a {@code |version} suffix
+	 * @return the resolved EvidenceVariable
+	 * @throws ResourceNotFoundException if no matching EV is found
+	 */
+
 	private EvidenceVariable resolveEvidenceVariable(String canonical) {
-		try {
-			Bundle b = repository.search(Bundle.class, EvidenceVariable.class, Searches.byCanonical(canonical), null);
-			if (b.hasEntry() && b.getEntryFirstRep().hasResource()) {
-				Resource r = b.getEntryFirstRep().getResource();
-				if (r instanceof EvidenceVariable ev) return ev;
-			}
-		} catch (Exception ignore) { }
-		return null;
-	}
-
-	private enum LogicOp { AND, OR, XOR }
-
-	private LogicOp mapOp(EvidenceVariable.CharacteristicCombination code) {
-		if (code == null) return LogicOp.AND;
-		String v = code.toCode();
-		if ("all-of".equalsIgnoreCase(v)) return LogicOp.AND;
-		if ("any-of".equalsIgnoreCase(v)) return LogicOp.OR;
-		// anything else → default AND
-		return LogicOp.AND;
-	}
-
-	private boolean reduce(List<Boolean> values, LogicOp op) {
-		switch (op) {
-			case AND: return values.stream().allMatch(Boolean::booleanValue);
-			case OR:  return values.stream().anyMatch(Boolean::booleanValue);
-			case XOR: return values.stream().filter(Boolean::booleanValue).count() == 1;
-			default:  return false;
+		Bundle bundle = repository.search(Bundle.class, EvidenceVariable.class, Searches.byCanonical(canonical), null);
+		if (bundle.hasEntry() && bundle.getEntryFirstRep().hasResource()) {
+			return (EvidenceVariable) bundle.getEntryFirstRep().getResource();
+		} else {
+			throw new ResourceNotFoundException(
+				String.format("EvidenceVariable resource with canonical '%s' was not found", canonical)
+			);
 		}
 	}
 
-	private boolean hasTrueBooleanExtension(IBaseHasExtensions extHolder, String url) {
-		if (!(extHolder instanceof Element e)) return false;
+	/**
+	 * Maps FHIR combination code to an internal logical operator.
+	 * Defaults to AND when code is null or unrecognized.
+	 *
+	 * @param code {@link EvidenceVariable.CharacteristicCombination} code (ANYOF → OR, otherwise AND)
+	 * @return internal {@link LogicOp}
+	 */
+	private LogicOp mapOp(EvidenceVariable.CharacteristicCombination code) {
+		if (code == EvidenceVariable.CharacteristicCombination.ANYOF) {
+			return LogicOp.OR;
+		}
+		return LogicOp.AND;
+	}
+
+	/**
+	 * Reduces a list of boolean values using the specified logical operator.
+	 *
+	 * @param values list of boolean operands
+	 * @param op     operator (AND/OR/XOR)
+	 * @return reduction result
+	 */
+	private boolean reduce(List<Boolean> values, LogicOp op) {
+		switch (op) {
+			case OR -> {
+				return values.stream().anyMatch(Boolean::booleanValue);
+			}
+			case XOR -> {
+				return values.stream().filter(Boolean::booleanValue).count() == 1;
+			}
+			default -> {
+				return values.stream().allMatch(Boolean::booleanValue);
+			}
+		}
+	}
+
+	/**
+	 * Checks whether a combination element carries the XOR extension with a true boolean value.
+	 *
+	 * @param extension element that may carry extensions
+	 * @return true if the XOR extension is present and true
+	 */
+	private boolean hasXorExtension(IBaseHasExtensions extension) {
+		if (!(extension instanceof Element e)) return false;
 		for (Extension ext : e.getExtension()) {
-			if (url.equals(ext.getUrl()) && ext.getValue() instanceof BooleanType bt) {
+			if (EXT_XOR.equals(ext.getUrl()) && ext.getValue() instanceof BooleanType bt) {
 				return bt.booleanValue();
 			}
 		}
 		return false;
 	}
 
-	private String readCqfLibraryCanonical(IBaseHasExtensions extHolder) {
-		if (!(extHolder instanceof Element e)) return null;
+	/**
+	 * Reads the canonical value from a {@code cqf-library} extension if present.
+	 *
+	 * @param extension element that may carry extensions
+	 * @return canonical URL string or null
+	 */
+	private String readCqfLibraryCanonical(IBaseHasExtensions extension) {
+		if (!(extension instanceof Element e)) return null;
 		for (Extension ext : e.getExtension()) {
 			if (EXT_CQF_LIBRARY.equals(ext.getUrl()) && ext.getValue() instanceof CanonicalType c) {
 				return c.getValue();
@@ -204,27 +305,79 @@ public class CohorteEvaluation {
 		return null;
 	}
 
+	/**
+	 * Creates a deep copy of {@link Parameters}.
+	 *
+	 * @param p source parameters (may be null)
+	 * @return a non-null copy (empty if source is null)
+	 */
 	private Parameters cloneParams(Parameters p) {
 		if (p == null) return new Parameters();
-		return (Parameters) p.copy();
+		return p.copy();
 	}
 
-	private boolean readBoolean(Parameters out, String name) {
-		if (out == null || name == null) return false;
-		for (Parameters.ParametersParameterComponent pp : out.getParameter()) {
-			if (name.equals(pp.getName()) && pp.getValue() instanceof BooleanType b) {
-				return b.booleanValue();
+	/**
+	 * Collects expression parameterization from {@value EXT_EV_PARAM} extensions and attaches
+	 * them under a nested {@code parameters} resource in the evaluation parameters.
+	 *
+	 * @param expression the Expression potentially carrying parameterization extensions
+	 * @param baseParam  base Parameters to clone and augment
+	 * @return new Parameters containing a nested {@code Parameters} resource under parameter name {@code "parameters"}
+	 * @throws InvalidRequestException if {@code name} or {@code value[x]} is missing
+	 */
+	private Parameters addExpressionParameters(Expression expression, Parameters baseParam) {
+		Parameters evalParam = cloneParams(baseParam);
+		Parameters expressionParam = new Parameters();
+
+		for (Extension extension : expression.getExtension()) {
+			if (extension.getUrl().equals(EXT_EV_PARAM)) {
+				String name = ((StringType) extension.getExtensionByUrl(SUB_NAME).getValue()).getValue();
+				DataType value = extension.getExtensionByUrl(SUB_VALUE).getValue();
+				expressionParam.addParameter(name, value);
 			}
 		}
-		return false;
+		evalParam.addParameter().setName("parameters").setResource(expressionParam);
+		return evalParam;
 	}
 
+	/**
+	 * Reads a boolean parameter from the evaluate CQL {@link Parameters} result.
+	 *
+	 * @param out  evaluate response
+	 * @param name parameter name to read
+	 * @return boolean value
+	 * @throws UnprocessableEntityException if the parameter is missing or not a boolean
+	 */
+	private boolean readBoolean(Parameters out, String name) {
+		if (out == null) {
+			throw new UnprocessableEntityException("Remote $evaluate returned null Parameters (expected a boolean parameter named '" + name + "').");
+		}
+		DataType value = out.getParameter(name).getValue();
+		if (value instanceof BooleanType) {
+			return ((BooleanType) value).booleanValue();
+		} else {
+			throw new UnprocessableEntityException("Remote $evaluate parameter '" + name + "' has type " + value.fhirType() + " (expected boolean).");
+		}
+	}
+
+	/**
+	 * Strips the resource type prefix from a reference string.
+	 *
+	 * @param ref reference string
+	 * @return id part, or null if {@code ref} is null
+	 */
 	private String stripPrefix(String ref) {
 		if (ref == null) return null;
 		int slash = ref.lastIndexOf('/');
 		return (slash >= 0) ? ref.substring(slash + 1) : ref;
 	}
 
+	/**
+	 * Extracts the terminal id from a canonical URL, ignoring any version suffix.
+	 *
+	 * @param canonical canonical URL with optional
+	 * @return id tail or null
+	 */
 	private String tailId(String canonical) {
 		if (canonical == null) return null;
 		// Remove version
@@ -251,5 +404,18 @@ public class CohorteEvaluation {
 		}
 	}
 
-	private String safe(String s) { return (s == null || s.isBlank()) ? null : s; }
+	/**
+	 * Returns {@code null} if the input is blank; otherwise the input string.
+	 *
+	 * @param s input
+	 * @return {@code null} if blank, else {@code s}
+	 */
+	private String safe(String s) {
+		return (s == null || s.isBlank()) ? null : s;
+	}
+
+	/**
+	 * Internal logical operator used to reduce child results.
+	 */
+	private enum LogicOp {AND, OR, XOR}
 }
