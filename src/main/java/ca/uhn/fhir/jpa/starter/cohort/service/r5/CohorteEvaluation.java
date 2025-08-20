@@ -144,7 +144,7 @@ public class CohorteEvaluation {
 					characteristic.getLinkId())
 				);
 			} else {
-				String libId = resolveLibraryId(characteristic, contextEV, fallbackLibraryId);
+				String libId = resolveLibraryId(contextEV, fallbackLibraryId);
 				result = evalBooleanExpression(libId, expressionName, subjectId, baseParams);
 			}
 
@@ -180,7 +180,7 @@ public class CohorteEvaluation {
 	private boolean evalBooleanExpression(String libraryId, String expressionName, String subjectId, Parameters baseParams) {
 		Parameters evaluateParam = cloneParams(baseParams);
 
-		evaluateParam.addParameter().setName("subject").setValue(new StringType(stripPrefix(subjectId)));
+		evaluateParam.addParameter().setName("subject").setValue(new StringType(subjectId));
 		Parameters out = cql.evaluateLibrary(evaluateParam, libraryId);
 		return readBoolean(out, expressionName);
 	}
@@ -188,18 +188,15 @@ public class CohorteEvaluation {
 	/**
 	 * Resolves the Library id to use for an expression
 	 *
-	 * @param atCharacteristic   node to check first for {@code cqf-library}
-	 * @param atEvidenceVariable parent EV if not present on the node
-	 * @param fallback           fallback library id
+	 * @param evidenceVariable parent EV if not present on the node
+	 * @param fallback         fallback library id
 	 * @return a concrete library id to call
 	 */
 	private String resolveLibraryId(
-		IBaseHasExtensions atCharacteristic,
-		IBaseHasExtensions atEvidenceVariable,
+		EvidenceVariable evidenceVariable,
 		String fallback) {
 
-		String canonical = readCqfLibraryCanonical(atCharacteristic);
-		if (canonical == null) canonical = readCqfLibraryCanonical(atEvidenceVariable);
+		String canonical = readCqfLibraryCanonical(evidenceVariable);
 		if (canonical == null) return fallback;
 
 		try {
@@ -291,15 +288,13 @@ public class CohorteEvaluation {
 	/**
 	 * Reads the canonical value from a {@code cqf-library} extension if present.
 	 *
-	 * @param extension element that may carry extensions
+	 * @param evidenceVariable evidence variable
 	 * @return canonical URL string or null
 	 */
-	private String readCqfLibraryCanonical(IBaseHasExtensions extension) {
-		if (!(extension instanceof Element e)) return null;
-		for (Extension ext : e.getExtension()) {
-			if (EXT_CQF_LIBRARY.equals(ext.getUrl()) && ext.getValue() instanceof CanonicalType c) {
-				return c.getValue();
-			}
+	private String readCqfLibraryCanonical(EvidenceVariable evidenceVariable) {
+		Extension extension = evidenceVariable.getExtensionByUrl("http://hl7.org/fhir/StructureDefinition/cqf-library");
+		if (extension != null) {
+			return extension.getValueCanonicalType().getValue();
 		}
 		return null;
 	}
@@ -351,11 +346,23 @@ public class CohorteEvaluation {
 		if (out == null) {
 			throw new UnprocessableEntityException("Remote $evaluate returned null Parameters (expected a boolean parameter named '" + name + "').");
 		}
-		DataType value = out.getParameter(name).getValue();
+
+		if (out.getParameter("evaluation error") != null) {
+			OperationOutcome oo = (OperationOutcome) out.getParameter("evaluation error").getResource();
+			String text = oo.getIssue().get(0).getDetails().getText();
+			oo.getIssue().get(0).getDetails().setText("expression" + "'" + name + "' evaluation error: " + text);
+			throw new UnprocessableEntityException(oo);
+		}
+		Parameters.ParametersParameterComponent param = out.getParameter(name);
+		DataType value = param.hasValue() ? param.getValue() : null;
 		if (value instanceof BooleanType) {
 			return ((BooleanType) value).booleanValue();
 		} else {
-			throw new UnprocessableEntityException("Remote $evaluate parameter '" + name + "' has type " + value.fhirType() + " (expected boolean).");
+			if (value != null) {
+				throw new UnprocessableEntityException("Remote $evaluate parameter '" + name + "' has type " + value.fhirType() + " (expected boolean).");
+			} else {
+				throw new UnprocessableEntityException("$evaluate parameter '" + name + " is null (expected boolean).");
+			}
 		}
 	}
 
