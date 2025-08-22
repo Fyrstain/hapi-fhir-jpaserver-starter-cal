@@ -50,35 +50,20 @@ public class CohorteProcessor {
 			);
 		}
 		EvidenceVariable evidenceVariable = repository.read(EvidenceVariable.class, new IdType(eligibilityReference.getReferenceElement().getIdPart()));
-		String libraryUrl = evidenceVariable.getExtensionByUrl("http://hl7.org/fhir/StructureDefinition/cqf-library")
-			.getValueCanonicalType().getValue();
-		if (libraryUrl == null) {
-			throw new IllegalArgumentException(
-				String.format("EvidenceVariable %s does not have a valid library reference", evidenceVariable.getIdElement().getValue())
-			);
+		Extension cqfExtension = evidenceVariable.getExtensionByUrl("http://hl7.org/fhir/StructureDefinition/cqf-library");
+
+		String libId = null;
+		if (cqfExtension != null) {
+			String libraryUrl = cqfExtension.getValueCanonicalType().getValue();
+			Bundle b = this.repository.search(Bundle.class, Library.class, Searches.byCanonical(libraryUrl), null);
+			if (b.getEntry().isEmpty()) {
+				var errorMsg = String.format("Unable to find Library with url: %s", libraryUrl);
+				throw new ResourceNotFoundException(errorMsg);
+			}
+
+			libId = VersionedIdentifiers.forUrl(libraryUrl).getId();
 		}
 
-		Bundle b = this.repository.search(Bundle.class, Library.class, Searches.byCanonical(libraryUrl), null);
-		if (b.getEntry().isEmpty()) {
-			var errorMsg = String.format("Unable to find Library with url: %s", libraryUrl);
-			throw new ResourceNotFoundException(errorMsg);
-		}
-
-		var libId = VersionedIdentifiers.forUrl(libraryUrl).getId();
-		/*var context = Engines.forRepository(repository, settings.getEvaluationSettings(), null);
-
-		CompiledLibrary lib;
-		try {
-			lib = context.getEnvironment().getLibraryManager().resolveLibrary(id);
-		} catch (CqlIncludeException e) {
-			throw new IllegalStateException(
-				String.format(
-					"Unable to load CQL/ELM for library: %s. Verify that the Library resource is available in your environment and has CQL/ELM content embedded.",
-					id.getId()),
-				e);
-		}
-
-		context.getState().init(lib.getLibrary());*/
 		var subjects =
 			subjectProvider.getSubjects(repository, (List<String>) null).collect(Collectors.toList());
 
