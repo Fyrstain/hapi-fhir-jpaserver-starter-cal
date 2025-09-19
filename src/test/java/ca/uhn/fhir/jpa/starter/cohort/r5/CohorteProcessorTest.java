@@ -87,7 +87,7 @@ class CohorteProcessorTest {
 			.thenAnswer(inv -> {
 				Parameters in = inv.getArgument(0);
 				String subject = in.getParameter("subject").getValue().primitiveValue();
-				boolean inPop = "123".equals(subject);
+				boolean inPop = subject != null && subject.endsWith("/123");
 				Parameters out = new Parameters();
 				out.addParameter().setName(exprName).setValue(new BooleanType(inPop));
 				out.addParameter().setName("evaluate boolean").setValue(new BooleanType(inPop));

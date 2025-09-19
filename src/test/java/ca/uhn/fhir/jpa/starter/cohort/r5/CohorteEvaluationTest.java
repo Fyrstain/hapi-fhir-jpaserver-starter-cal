@@ -105,7 +105,7 @@ class CohorteEvaluationTest {
 		when(cql.evaluateLibrary(any(Parameters.class), eq("LibA"))).thenAnswer(inv -> {
 			Parameters p = inv.getArgument(0);
 			String subject = p.getParameter("subject").getValue().primitiveValue();
-			boolean in = "123".equals(subject);
+			boolean in = subject != null && subject.endsWith("/123");
 			return outBoolean("IsEligible", in);
 		});
 
@@ -137,7 +137,7 @@ class CohorteEvaluationTest {
 		ev.addCharacteristic(expressionDef("InAge"));
 
 		Expression expr = ev.getCharacteristicFirstRep().getDefinitionExpression();
-		Extension container = new Extension("https://www.centreantoinelacassagne.org/StructureDefinition/EXT-EVParametrisation");
+		Extension container = new Extension("https://www.isis.com/StructureDefinition/EXT-EVParametrisation");
 		container.addExtension("name", new StringType("minAge"));
 		container.addExtension("value", new IntegerType(18));
 		expr.addExtension(container);
@@ -297,8 +297,8 @@ class CohorteEvaluationTest {
 			String subj = in.getParameter("subject").getValue().primitiveValue();
 			Parameters out = new Parameters();
 			out.addParameter().setName("A").setValue(new BooleanType(true));
-			out.addParameter().setName("B").setValue(new BooleanType("1".equals(subj)));
-			out.addParameter().setName("evaluate boolean").setValue(new BooleanType("1".equals(subj)));
+			out.addParameter().setName("B").setValue(new BooleanType(subj != null && subj.endsWith("/1")));
+			out.addParameter().setName("evaluate boolean").setValue(new BooleanType(subj != null && subj.endsWith("/1")));
 			return out;
 		});
 
@@ -328,7 +328,7 @@ class CohorteEvaluationTest {
 		EvidenceVariable ev = initiateEvidenceVariable();
 		var c = new EvidenceVariable.EvidenceVariableCharacteristicComponent();
 		var comb = new EvidenceVariable.EvidenceVariableCharacteristicDefinitionByCombinationComponent();
-		comb.addExtension("https://www.centreantoinelacassagne.org/StructureDefinition/EXT-Exclusive-OR", new BooleanType(true));
+		comb.addExtension("https://www.isis.com/StructureDefinition/EXT-Exclusive-OR", new BooleanType(true));
 		comb.addCharacteristic(expressionDef("A"));
 		comb.addCharacteristic(expressionDef("B"));
 		c.setDefinitionByCombination(comb);
