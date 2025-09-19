@@ -1,5 +1,6 @@
 package ca.uhn.fhir.jpa.starter.cohort.service.r5;
 
+import ca.uhn.fhir.jpa.starter.cohort.service.r5.impl.CohorteServiceImpl;
 import ca.uhn.fhir.jpa.starter.common.RemoteCqlClient;
 import ca.uhn.fhir.jpa.starter.datamart.service.r5.ResearchStudyUtils;
 import ca.uhn.fhir.rest.server.exceptions.ResourceNotFoundException;
@@ -9,7 +10,7 @@ import org.opencds.cqf.fhir.utility.search.Searches;
 
 import java.util.Objects;
 
-public class CohorteService {
+public class CohorteService implements CohorteServiceImpl {
 
 	private final Repository repository;
 	private final CohorteEvaluationOptions settings;

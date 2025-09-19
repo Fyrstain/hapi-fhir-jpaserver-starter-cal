@@ -14,8 +14,8 @@ import java.util.List;
 
 public class CohorteEvaluation {
 	private static final String EXT_CQF_LIBRARY = "http://hl7.org/fhir/StructureDefinition/cqf-library";
-	private static final String EXT_XOR = "https://www.centreantoinelacassagne.org/StructureDefinition/EXT-Exclusive-OR";
-	private static final String EXT_EV_PARAM = "https://www.centreantoinelacassagne.org/StructureDefinition/EXT-EVParametrisation";
+	private static final String EXT_XOR = "https://www.isis.com/StructureDefinition/EXT-Exclusive-OR";
+	private static final String EXT_EV_PARAM = "https://www.isis.com/StructureDefinition/EXT-EVParametrisation";
 
 	// Sub-extensions inside the container:
 	private static final String SUB_NAME = "name";
