@@ -1,4 +1,4 @@
-package ca.uhn.fhir.jpa.starter.cohort.service.r5;// imports you may need:
+package ca.uhn.fhir.jpa.starter.cohort.service.r5;
 
 import ca.uhn.fhir.jpa.starter.common.RemoteCqlClient;
 import ca.uhn.fhir.rest.server.exceptions.InvalidRequestException;
