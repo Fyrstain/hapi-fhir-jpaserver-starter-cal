@@ -1,7 +1,7 @@
 package ca.uhn.fhir.jpa.starter;
 
-import ca.uhn.fhir.jpa.starter.common.RemoteCqlClient;
 import ca.uhn.fhir.jpa.starter.cdshooks.study.r5.StudyEligibilityCheckService;
+import ca.uhn.fhir.jpa.starter.common.RemoteCqlClient;
 import ca.uhn.fhir.rest.api.server.cdshooks.CdsServiceRequestContextJson;
 import ca.uhn.fhir.rest.api.server.cdshooks.CdsServiceRequestJson;
 import ca.uhn.hapi.fhir.cdshooks.api.json.*;
@@ -11,6 +11,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.MockedConstruction;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -52,84 +54,99 @@ class StudyEligibilityCheckServiceR5Test {
 
 	@Test
 	void testEligiblePatientWithPrefetch() throws Exception {
-		when(mockCqlClient.evaluateInclusionExpression(
-			any(Bundle.class),
-			anyString(),
-			anyString(),
-			anyString(),
-			anyString(),
-			anyString())
-		).thenReturn(true);
-
-		CdsServiceResponseJson response = service.exampleService(request);
-
-		assertCardProperties(
-			response,
-			CdsServiceIndicatorEnum.INFO,
-			"Patient eligible for clinical study STUDY-001"
-		);
+		// The service constructs a new RemoteCqlClient internally.  Intercept that construction
+		// and stub evaluateInclusionExpression(Bundle, ...) to return true, so the card
+		// indicates that the patient is eligible.
+		try (MockedConstruction<RemoteCqlClient> cons = Mockito.mockConstruction(
+			RemoteCqlClient.class,
+			(mock, context) -> when(mock.evaluateInclusionExpression(
+				any(Bundle.class),
+				anyString(),
+				anyString(),
+				anyString(),
+				anyString(),
+				anyString()
+			)).thenReturn(true)
+		)) {
+			CdsServiceResponseJson response = service.exampleService(request);
+			assertCardProperties(
+				response,
+				CdsServiceIndicatorEnum.INFO,
+				"Patient eligible for clinical study STUDY-001"
+			);
+		}
 	}
 
 	@Test
 	void testNotEligiblePatientWithPrefetch() throws Exception {
-		when(mockCqlClient.evaluateInclusionExpression(
-			any(Bundle.class),
-			anyString(),
-			anyString(),
-			anyString(),
-			anyString(),
-			anyString())
-		).thenReturn(false);
-
-		CdsServiceResponseJson response = service.exampleService(request);
-
-		assertCardProperties(
-			response,
-			CdsServiceIndicatorEnum.WARNING,
-			"Patient not eligible for study STUDY-001"
-		);
+		// Stub RemoteCqlClient construction to return false when evaluating the inclusion
+		// expression.  The service should produce a WARNING card indicating non-eligibility.
+		try (MockedConstruction<RemoteCqlClient> cons = Mockito.mockConstruction(
+			RemoteCqlClient.class,
+			(mock, context) -> when(mock.evaluateInclusionExpression(
+				any(Bundle.class),
+				anyString(),
+				anyString(),
+				anyString(),
+				anyString(),
+				anyString()
+			)).thenReturn(false)
+		)) {
+			CdsServiceResponseJson response = service.exampleService(request);
+			assertCardProperties(
+				response,
+				CdsServiceIndicatorEnum.WARNING,
+				"Patient not eligible for study STUDY-001"
+			);
+		}
 	}
 
 	@Test
 	void testEvaluationError() throws Exception {
-		when(mockCqlClient.evaluateInclusionExpression(
-			any(Bundle.class),
-			anyString(),
-			anyString(),
-			anyString(),
-			anyString(),
-			anyString())
-		).thenThrow(new RuntimeException("CQL Engine error"));
-
-		CdsServiceResponseJson response = service.exampleService(request);
-
-		assertCardProperties(
-			response,
-			CdsServiceIndicatorEnum.CRITICAL,
-			"Error evaluating eligibility"
-		);
+		// Intercept RemoteCqlClient construction and make evaluateInclusionExpression throw an exception
+		try (MockedConstruction<RemoteCqlClient> cons = Mockito.mockConstruction(
+			RemoteCqlClient.class,
+			(mock, context) -> when(mock.evaluateInclusionExpression(
+				any(Bundle.class),
+				anyString(),
+				anyString(),
+				anyString(),
+				anyString(),
+				anyString()
+			)).thenThrow(new RuntimeException("CQL Engine error"))
+		)) {
+			CdsServiceResponseJson response = service.exampleService(request);
+			assertCardProperties(
+				response,
+				CdsServiceIndicatorEnum.CRITICAL,
+				"Error evaluating eligibility"
+			);
+		}
 	}
 
 	@Test
 	void testWithoutPrefetch() throws Exception {
 		request.addPrefetch("patientData", null);
-
-		when(mockCqlClient.evaluateInclusionExpression(
-			anyString(),
-			anyString(),
-			anyString(),
-			anyString(),
-			anyString(),
-			anyString())
-		).thenReturn(true);
-
-		CdsServiceResponseJson response = service.exampleService(request);
-
-		assertCardProperties(
-			response,
-			CdsServiceIndicatorEnum.INFO,
-			"Patient eligible for clinical study STUDY-001"
-		);
+		// When no prefetch is provided the service calls evaluateInclusionExpression with a patientId.
+		// Stub the construction so that this call returns true, resulting in an INFO card.
+		try (MockedConstruction<RemoteCqlClient> cons = Mockito.mockConstruction(
+			RemoteCqlClient.class,
+			(mock, context) -> when(mock.evaluateInclusionExpression(
+				anyString(),
+				anyString(),
+				anyString(),
+				anyString(),
+				anyString(),
+				anyString()
+			)).thenReturn(true)
+		)) {
+			CdsServiceResponseJson response = service.exampleService(request);
+			assertCardProperties(
+				response,
+				CdsServiceIndicatorEnum.INFO,
+				"Patient eligible for clinical study STUDY-001"
+			);
+		}
 	}
 
 	@Test
