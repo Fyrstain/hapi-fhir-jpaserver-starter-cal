@@ -4,6 +4,6 @@ import org.hl7.fhir.r5.model.CanonicalType;
 import org.hl7.fhir.r5.model.Endpoint;
 import org.hl7.fhir.r5.model.Parameters;
 
-public interface StudyInstantiateServiceImpl {
+public interface StudyInstantiateServiceInterface {
 	Parameters instantiateStudy(CanonicalType studyUrl, Endpoint researchStudyEndpoint);
 }
