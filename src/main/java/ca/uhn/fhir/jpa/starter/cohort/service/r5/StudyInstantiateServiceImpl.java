@@ -1,6 +1,5 @@
 package ca.uhn.fhir.jpa.starter.cohort.service.r5;
 
-import ca.uhn.fhir.jpa.starter.cohort.service.r5.impl.StudyInstantiateServiceInterface;
 import ca.uhn.fhir.jpa.starter.datamart.service.r5.utils.ResearchStudyUtils;
 import ca.uhn.fhir.rest.server.exceptions.InvalidRequestException;
 import ca.uhn.fhir.rest.server.exceptions.ResourceNotFoundException;
@@ -15,7 +14,7 @@ import ca.uhn.fhir.rest.client.api.IGenericClient;
 
 import java.util.*;
 
-public class StudyInstantiateService implements StudyInstantiateServiceInterface {
+public class StudyInstantiateServiceImpl implements ca.uhn.fhir.jpa.starter.cohort.service.r5.impl.StudyInstantiateService {
 
 	/**
 	 * Base repository (typically the local repository) used to obtain {@link FhirContext}
@@ -28,11 +27,11 @@ public class StudyInstantiateService implements StudyInstantiateServiceInterface
 	private final EvidenceVariableService evidenceVariableService = new EvidenceVariableService();
 
 	/**
-	 * Creates a new {@link StudyInstantiateService}.
+	 * Creates a new {@link StudyInstantiateServiceImpl}.
 	 *
 	 * @param repository base {@link Repository}.
 	 */
-	public StudyInstantiateService(Repository repository) {
+	public StudyInstantiateServiceImpl(Repository repository) {
 		this.myRepository = Objects.requireNonNull(repository);
 	}
 

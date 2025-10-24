@@ -2,7 +2,7 @@ package ca.uhn.fhir.jpa.starter.cohort.r5;
 
 import ca.uhn.fhir.context.FhirContext;
 import ca.uhn.fhir.jpa.starter.cohort.service.r5.Repositories;
-import ca.uhn.fhir.jpa.starter.cohort.service.r5.StudyInstantiateService;
+import ca.uhn.fhir.jpa.starter.cohort.service.r5.StudyInstantiateServiceImpl;
 import ca.uhn.fhir.rest.client.api.IGenericClient;
 import ca.uhn.fhir.rest.server.exceptions.InvalidRequestException;
 import ca.uhn.fhir.rest.server.exceptions.ResourceNotFoundException;
@@ -19,7 +19,7 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 /**
- * Unit tests for {@link StudyInstantiateService}.
+ * Unit tests for {@link StudyInstantiateServiceImpl}.
  */
 @ExtendWith(MockitoExtension.class)
 class StudyInstantiateServiceTest {
@@ -35,7 +35,7 @@ class StudyInstantiateServiceTest {
 	private Repository researchRepository;
 	private FhirContext fhirContext;
 	private IGenericClient client;
-	private StudyInstantiateService service;
+	private StudyInstantiateServiceImpl service;
 
 	@BeforeEach
 	void setUp() {
@@ -43,7 +43,7 @@ class StudyInstantiateServiceTest {
 		researchRepository = mock(Repository.class);
 		fhirContext = mock(FhirContext.class, RETURNS_DEEP_STUBS);
 		client = mock(IGenericClient.class, RETURNS_DEEP_STUBS);
-		service = new StudyInstantiateService(baseRepository);
+		service = new StudyInstantiateServiceImpl(baseRepository);
 	}
 
 	@Test
@@ -75,7 +75,7 @@ class StudyInstantiateServiceTest {
 	@Test
 	void instantiateStudyInvalidParametersThrows() {
 		Repository baseRepo = mock(Repository.class);
-		StudyInstantiateService studyService = new StudyInstantiateService(baseRepo);
+		StudyInstantiateServiceImpl studyService = new StudyInstantiateServiceImpl(baseRepo);
 
 		CanonicalType validCanonical = new CanonicalType(STUDY_CANONICAL);
 		CanonicalType emptyCanonical = new CanonicalType("");

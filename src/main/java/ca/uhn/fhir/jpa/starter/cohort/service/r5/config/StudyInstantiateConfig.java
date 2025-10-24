@@ -4,7 +4,7 @@ import ca.uhn.fhir.cr.common.RepositoryFactoryForRepositoryInterface;
 import ca.uhn.fhir.cr.config.CrBaseConfig;
 import ca.uhn.fhir.cr.config.RepositoryConfig;
 import ca.uhn.fhir.jpa.starter.cohort.provider.r5.StudyInstantiateProvider;
-import ca.uhn.fhir.jpa.starter.cohort.service.r5.StudyInstantiateService;
+import ca.uhn.fhir.jpa.starter.cohort.service.r5.StudyInstantiateServiceImpl;
 import ca.uhn.fhir.jpa.starter.cohort.service.r5.impl.StudyInstantiateServiceFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -17,7 +17,7 @@ public class StudyInstantiateConfig {
 
 	@Bean
 	StudyInstantiateServiceFactory studyInstantiateServiceFactory(@Lazy RepositoryFactoryForRepositoryInterface repositoryFactory){
-		return requestDetails -> new StudyInstantiateService(repositoryFactory.create(requestDetails));
+		return requestDetails -> new StudyInstantiateServiceImpl(repositoryFactory.create(requestDetails));
 	}
 
 	@Bean
