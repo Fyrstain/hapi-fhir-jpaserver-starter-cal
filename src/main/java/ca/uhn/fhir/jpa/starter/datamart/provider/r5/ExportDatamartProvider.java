@@ -18,7 +18,7 @@ public class ExportDatamartProvider {
 
 	/**
 	 * Provides the implementation of the FHIR operation
-	 * <a href="https://www.centreantoinelacassagne.org/OperationDefinition/OD-ExportDatamart">
+	 * <a href="https://www.isis.com/OperationDefinition/OD-ExportDatamart">
 	 * $export-datamart</a>.
 	 * This operation export a datamart based on a ResearchStudy resource and returns a
 	 * {@link Binary} containing the evaluated research-variable parameters for a list of subjects in a specific format.

@@ -84,9 +84,16 @@ public class DatamartService implements DatamartServiceImpl {
 	 */
 	public ListResource updateResearchStudyWithList(Repository repo, ResearchStudy researchStudy, ListResource listResource) {
 		Extension listReference = researchStudy.getExtensionByUrl(ResearchStudyUtils.EXT_URL).getExtensionByUrl("evaluation");
+		CodeableConcept phase = new CodeableConcept();
+		phase.addCoding()
+			.setCode(ResearchStudyUtils.POST_DATAMART)
+			.setSystem(ResearchStudyUtils.CUSTOM_PHASE_SYSTEM);
 		if (listReference != null) {
 			listResource.setId(listReference.getValueReference().getReferenceElement().getIdPart());
 			repo.update(listResource);
+			researchStudy.setPhase(phase);
+
+			repo.update(researchStudy);
 			return listResource;
 		} else {
 			MethodOutcome outcome = repo.create(listResource);
@@ -102,10 +109,6 @@ public class DatamartService implements DatamartServiceImpl {
 			researchStudy.getExtensionByUrl(ResearchStudyUtils.EXT_URL).addExtension()
 				.setUrl("evaluation")
 				.setValue(reference);
-			CodeableConcept phase = new CodeableConcept();
-			phase.addCoding()
-				.setCode(ResearchStudyUtils.POST_DATAMART)
-				.setSystem(ResearchStudyUtils.CUSTOM_PHASE_SYSTEM);
 			researchStudy.setPhase(phase);
 
 			repo.update(researchStudy);

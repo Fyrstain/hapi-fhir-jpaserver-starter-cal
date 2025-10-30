@@ -26,7 +26,7 @@ public class CohorteProvider {
 
 	/**
 	 * Provides the implementation of the FHIR operation <a href=
-	 * "https://www.centreantoinelacassagne.org/OperationDefinition/OD-Cohorting">$cohorting</a>.
+	 * "https://www.isis.com/OperationDefinition/OD-Cohorting">$cohorting</a>.
 	 * This operation allows cohort selection associated with a ResearchStudy using specified parameters
 	 * for inclusion criteria, data access, and supporting terminologies.
 	 *

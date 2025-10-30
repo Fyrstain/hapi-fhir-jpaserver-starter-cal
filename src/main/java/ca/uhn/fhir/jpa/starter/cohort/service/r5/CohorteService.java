@@ -58,7 +58,7 @@ public class CohorteService {
 		CodeableConcept phase = new CodeableConcept();
 		phase.addCoding()
 			.setCode("post-cohorting")
-			.setSystem("https://www.centreantoinelacassagne.org/CodeSystem/COS-CustomStudyPhases");
+			.setSystem("https://www.isis.com/CodeSystem/COS-CustomStudyPhases");
 		researchStudy.setPhase(phase);
 
 		repo.update(researchStudy);

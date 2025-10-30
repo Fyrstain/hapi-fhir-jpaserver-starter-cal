@@ -13,9 +13,9 @@ import java.util.stream.Collectors;
 
 public class ResearchStudyUtils {
 	public static final String EXT_URL =
-		"https://www.centreantoinelacassagne.org/StructureDefinition/EXT-Datamart";
+		"https://www.isis.com/StructureDefinition/EXT-Datamart";
 	public static final String CUSTOM_PHASE_SYSTEM =
-		"https://www.centreantoinelacassagne.org/CodeSystem/COS-ResearchStudyPhase";
+		"https://www.isis.com/CodeSystem/COS-ResearchStudyPhase";
 	public static final String INITIAL_PHASE = "initial";
 	public static final String POST_DATAMART = "post-datamart";
 	public static final String VAR_EXT_NAME = "variable";

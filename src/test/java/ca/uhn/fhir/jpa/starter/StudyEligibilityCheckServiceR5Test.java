@@ -156,6 +156,6 @@ class StudyEligibilityCheckServiceR5Test {
 
 		CdsServiceResponseCardSourceJson source = card.getSource();
 		assertEquals("Research Eligibility CDS Service", source.getLabel());
-		assertEquals("https://www.centreantoinelacassagne.org", source.getUrl());
+		assertEquals("https://www.isis.com", source.getUrl());
 	}
 }

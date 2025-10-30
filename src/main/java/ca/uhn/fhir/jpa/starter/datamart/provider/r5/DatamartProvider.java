@@ -19,7 +19,7 @@ public class DatamartProvider {
 
 	/**
 	 * Provides the implementation of the FHIR operation
-	 * <a href="https://www.centreantoinelacassagne.org/OperationDefinition/OD-GenerateDatamart">
+	 * <a href="https://www.isis.com/OperationDefinition/OD-GenerateDatamart">
 	 * $generate-datamart</a>.
 	 * This operation generates a datamart based on a ResearchStudy resource and returns a
 	 * {@link ListResource} containing the evaluated research-variable parameters for a list of subjects.

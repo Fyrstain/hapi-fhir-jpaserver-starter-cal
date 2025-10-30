@@ -100,7 +100,7 @@ public class StudyEligibilityCheckService {
 		// Set source information
 		CdsServiceResponseCardSourceJson source = new CdsServiceResponseCardSourceJson();
 		source.setLabel("Research Eligibility CDS Service");
-		source.setUrl("https://www.centreantoinelacassagne.org");
+		source.setUrl("https://www.isis.com");
 		card.setSource(source);
 
 		response.addCard(card);
