@@ -1,18 +1,12 @@
 package ca.uhn.fhir.jpa.starter.datamart.service.r5.service;
 
 import ca.uhn.fhir.jpa.starter.datamart.service.r5.utils.ResearchStudyUtils;
-import ca.uhn.fhir.model.api.IQueryParameterType;
-import ca.uhn.fhir.rest.param.NumberParam;
-import ca.uhn.fhir.rest.param.TokenParam;
 import org.hl7.fhir.r5.model.*;
 import org.opencds.cqf.fhir.api.Repository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 public class DatamartTransformation {
 	private static final Logger logger = LoggerFactory.getLogger(DatamartTransformation.class);
@@ -56,10 +50,27 @@ public class DatamartTransformation {
 	 * @return a Bundle with the ListResource and included Parameters resources
 	 */
 	public Bundle fetchDataMartBundle(String listId) {
-		Map<String, List<IQueryParameterType>> params = new HashMap<>();
-		params.put("_count", Collections.singletonList(new NumberParam(1000)));
-		params.put("_has:List:item:_id", Collections.singletonList(new TokenParam(listId)));
-		return repository.search(Bundle.class, Parameters.class, params, null);
-	}
+		Bundle output = new Bundle();
+		output.setType(Bundle.BundleType.COLLECTION);
 
+		ListResource listParam = repository.read(ListResource.class, new IdType(listId));
+		if (listParam == null){
+			return output;
+		}
+
+		for (ListResource.ListResourceEntryComponent entry : listParam.getEntry()) {
+			Reference ref = entry.getItem();
+			if (ref == null || ref.getReferenceElement() == null) {
+				continue;
+			}
+			String resourceType = ref.getReferenceElement().getResourceType();
+			String idPart = ref.getReferenceElement().getIdPart();
+			if (!Objects.equals(resourceType, "Parameters") || idPart == null) {
+				continue;
+			}
+			Parameters parameters = repository.read(Parameters.class, new IdType(idPart));
+			if (parameters != null) output.addEntry(new Bundle.BundleEntryComponent().setResource(parameters));
+		}
+		return output;
+	}
 }

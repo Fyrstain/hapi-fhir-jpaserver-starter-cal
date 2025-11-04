@@ -12,7 +12,7 @@ import java.util.*;
 
 public class DatamartRepository implements Repository {
     private static final Set<String> terminologyResourceSet = new HashSet(Arrays.asList("ValueSet", "CodeSystem", "ConceptMap", "StructureMap"));
-    private static final Set<String> researchResourceSet = new HashSet(Arrays.asList("Library", "EvidenceVariable", "ResearchStudy", "Group", "ListResource"));
+    private static final Set<String> researchResourceSet = new HashSet(Arrays.asList("Library", "EvidenceVariable", "ResearchStudy", "Group", "List"));
     private final Repository data;
     private final Repository research;
     private final Repository terminology;
@@ -42,7 +42,11 @@ public class DatamartRepository implements Repository {
     }
 
     public <T extends IBaseResource> MethodOutcome create(T resource, Map<String, String> headers) {
-        return this.research.create(resource);
+		 if (this.isTerminologyResource(resource.getIdElement().getResourceType())) {
+			 return this.terminology.create(resource);
+		 } else {
+			 return this.isResearchResource(resource.getIdElement().getResourceType()) ? this.research.create(resource) : this.data.create(resource);
+		 }
     }
 
     public <I extends IIdType, P extends IBaseParameters> MethodOutcome patch(I id, P patchParameters, Map<String, String> headers) {
@@ -50,7 +54,11 @@ public class DatamartRepository implements Repository {
     }
 
     public <T extends IBaseResource> MethodOutcome update(T resource, Map<String, String> headers) {
-        return this.research.update(resource);
+		 if (this.isTerminologyResource(resource.getIdElement().getResourceType())) {
+			 return this.terminology.update(resource);
+		 } else {
+			 return this.isResearchResource(resource.getIdElement().getResourceType()) ? this.research.update(resource) : this.data.update(resource);
+		 }
     }
 
     public <T extends IBaseResource, I extends IIdType> MethodOutcome delete(Class<T> resourceType, I id, Map<String, String> headers) {

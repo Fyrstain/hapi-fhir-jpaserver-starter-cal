@@ -201,25 +201,19 @@ public class DatamartGeneration {
 				params.addParameter().setName("Patient").setValue(pseudo);
 			}
 		} catch (Exception ignore) {
-
 		}
 
 		if (expressions.isEmpty()) {
 			return null;
 		}
-		Map<String, ExpressionInfo> expressionByLib = new HashMap<>();
+
 		for (ExpressionInfo expression : expressions) {
-			expressionByLib.computeIfAbsent(expression.libraryId, k -> expression);
-		}
-		for (Map.Entry<String, ExpressionInfo> entry : expressionByLib.entrySet()) {
-			String libId = entry.getKey();
-			ExpressionInfo expression = entry.getValue();
+			String libId = expression.libraryId;
 
 			Parameters callParams = baseParams.copy();
 			callParams.addParameter().setName("parameters").setResource(expression.parameters);
 			callParams.getParameter().removeIf(p -> "subject".equals(p.getName()));
 			callParams.addParameter().setName("subject").setValue(new StringType(subjectId));
-
 
 			Parameters result = cqlEngine.evaluateLibrary(callParams, libId);
 

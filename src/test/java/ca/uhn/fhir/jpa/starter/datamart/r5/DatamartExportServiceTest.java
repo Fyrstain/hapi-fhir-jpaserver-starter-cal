@@ -76,12 +76,14 @@ class DatamartExportServiceTest {
 				.thenReturn(repository);
 			when(repository.search(eq(Bundle.class), eq(ResearchStudy.class), any(), isNull()))
 				.thenReturn(studyBundle);
+			when(repository.search(eq(Bundle.class), eq(StructureMap.class), any(), isNull()))
+				.thenReturn(new Bundle());
 
 			ResourceNotFoundException ex = assertThrows(
 				ResourceNotFoundException.class,
 				() -> service.exportDatamart(studyUrl, studyEndpoint, mapEndpoint, termEndpoint, remoteEndpoint, type, mapUrl)
 			);
-			assertTrue(ex.getMessage().toLowerCase().contains("datamart"));
+			assertTrue(ex.getMessage().contains("Unable to find StructureMap"));
 		}
 	}
 
