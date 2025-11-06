@@ -325,9 +325,15 @@ public class CohorteEvaluation {
 
 		for (Extension extension : expression.getExtension()) {
 			if (extension.getUrl().equals(EXT_EV_PARAM)) {
-				String name = ((StringType) extension.getExtensionByUrl(SUB_NAME).getValue()).getValue();
-				DataType value = extension.getExtensionByUrl(SUB_VALUE).getValue();
-				expressionParam.addParameter(name, value);
+				Extension nameExtension = extension.getExtensionByUrl(SUB_NAME);
+				Extension valueExtension = extension.getExtensionByUrl(SUB_VALUE);
+
+				if(!nameExtension.isEmpty() && nameExtension.hasValue() &&
+					!valueExtension.isEmpty() && valueExtension.hasValue()) {
+					String name = ((StringType) nameExtension.getValue()).getValue();
+					DataType value = valueExtension.getValue();
+					expressionParam.addParameter(name, value);
+				}
 			}
 		}
 		evalParam.addParameter().setName("parameters").setResource(expressionParam);
