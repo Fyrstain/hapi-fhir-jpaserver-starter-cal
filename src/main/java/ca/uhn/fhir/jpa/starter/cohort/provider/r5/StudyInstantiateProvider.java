@@ -7,7 +7,6 @@ import ca.uhn.fhir.rest.api.server.RequestDetails;
 import org.hl7.fhir.r5.model.*;
 
 public class StudyInstantiateProvider {
-
 	
 	private StudyInstantiateServiceFactory myFactory;
 

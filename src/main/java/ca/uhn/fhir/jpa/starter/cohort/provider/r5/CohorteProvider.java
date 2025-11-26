@@ -8,9 +8,7 @@ import org.hl7.fhir.r5.model.CanonicalType;
 import org.hl7.fhir.r5.model.Endpoint;
 import org.hl7.fhir.r5.model.Group;
 import org.hl7.fhir.r5.model.ResearchStudy;
-import org.springframework.stereotype.Component;
 
-@Component
 public class CohorteProvider {
 
 	private final CohorteServiceFactory myFactory;

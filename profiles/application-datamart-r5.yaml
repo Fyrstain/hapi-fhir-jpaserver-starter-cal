@@ -1,6 +1,5 @@
 hapi:
   fhir:
     fhir_version: R5
-    custom_provider_classes:
-      - ca.uhn.fhir.jpa.starter.datamart.provider.r5.DatamartProvider
-      - ca.uhn.fhir.jpa.starter.datamart.provider.r5.ExportDatamartProvider
+    datamart:
+      enabled: true
