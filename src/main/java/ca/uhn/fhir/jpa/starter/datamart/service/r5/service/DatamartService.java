@@ -8,7 +8,10 @@ import ca.uhn.fhir.jpa.starter.datamart.service.r5.impl.DatamartServiceImpl;
 import ca.uhn.fhir.rest.api.MethodOutcome;
 import ca.uhn.fhir.rest.server.exceptions.InternalErrorException;
 import ca.uhn.fhir.rest.server.exceptions.ResourceNotFoundException;
+import ca.uhn.fhir.rest.server.exceptions.UnprocessableEntityException;
+
 import org.hl7.fhir.r5.model.*;
+import org.hl7.fhir.r5.model.Bundle.BundleEntryComponent;
 import org.opencds.cqf.fhir.api.Repository;
 import org.opencds.cqf.fhir.utility.search.Searches;
 
@@ -34,6 +37,8 @@ public class DatamartService implements DatamartServiceImpl {
 	 * @param dataEndpoint          Endpoint to access data referenced by the retrieval operations in the library.
 	 * @param terminologyEndpoint   (Optional) Endpoint to access terminology (ValueSets, CodeSystems) referenced by the library.
 	 * @return The generated ListResource representing the Datamart.
+	 * @throws ResourceNotFoundException if the ResearchStudy cannot be found or if cohorting has not been performed.
+	 * @throws UnprocessableEntityException if an OperationOutcome is received while searching for the ResearchStudy.
 	 */
 	public ListResource generateDatamart(
 		CanonicalType researchStudyUrl,
@@ -43,12 +48,48 @@ public class DatamartService implements DatamartServiceImpl {
 		Endpoint cqlEngineEndpoint
 	) {
 		Repository repo = Repositories.proxy(repository, false, dataEndpoint, researchStudyEndpoint, terminologyEndpoint);
-		Bundle b = repo.search(Bundle.class, ResearchStudy.class, Searches.byCanonical(researchStudyUrl.getCanonical()), null);
-		if (b.getEntry().isEmpty()) {
+		Bundle studyBundle;
+
+		try {
+			studyBundle = repo.search(Bundle.class, ResearchStudy.class, Searches.byCanonical(researchStudyUrl.getCanonical()), null);
+		} catch (Exception e) {
+			throw new UnprocessableEntityException("Failed to search ResearchStudy by canonical: " + e.getMessage());
+		}
+
+		if (studyBundle.getEntry().isEmpty()) {
 			var errorMsg = String.format("Unable to find ResearchStudy with url: %s", researchStudyUrl.getCanonical());
 			throw new ResourceNotFoundException(errorMsg);
 		}
-		ResearchStudy researchStudy = (ResearchStudy) b.getEntry().get(0).getResource();
+
+		ResearchStudy researchStudy = null;
+		OperationOutcome operationOutcome = null;
+
+		for (BundleEntryComponent entry : studyBundle.getEntry()) {
+			if (entry == null || entry.getResource() == null) continue;
+			if (entry.getResource() instanceof ResearchStudy) {
+				researchStudy = (ResearchStudy) entry.getResource();
+				break;
+			} else if (entry.getResource() instanceof OperationOutcome) {
+				operationOutcome = (OperationOutcome) entry.getResource();
+			}
+		}
+		if (researchStudy == null) {
+			if (operationOutcome != null) {
+				String diag = null;
+				if (operationOutcome.hasIssue() && operationOutcome.getIssueFirstRep().hasDiagnostics()) {
+					diag = operationOutcome.getIssueFirstRep().getDiagnostics();
+				} else if (operationOutcome.hasText() && operationOutcome.getText().hasDiv()) {
+					diag = operationOutcome.getText().getDivAsString();
+				}
+				String message = "Server returned an OperationOutcome while resolving ResearchStudy";
+				if (diag != null && !diag.isBlank()) {
+					message += ": " + diag;
+				}
+				throw new UnprocessableEntityException(message);
+			}
+			throw new ResourceNotFoundException("ResearchStudy with canonical '" + researchStudyUrl.getValue() + "' not found");
+		}
+
 		if (Objects.equals(
 			researchStudy.getPhase().getCode(ResearchStudyUtils.CUSTOM_PHASE_SYSTEM), ResearchStudyUtils.INITIAL_PHASE)) {
 			var errorMsg = String.format("A cohorting is needed before generating the datamart for ResearchStudy with url: %s", researchStudyUrl);

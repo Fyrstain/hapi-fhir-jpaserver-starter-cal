@@ -4,7 +4,10 @@ import ca.uhn.fhir.jpa.starter.cohort.service.r5.impl.CohorteServiceImpl;
 import ca.uhn.fhir.jpa.starter.common.RemoteCqlClient;
 import ca.uhn.fhir.jpa.starter.datamart.service.r5.utils.ResearchStudyUtils;
 import ca.uhn.fhir.rest.server.exceptions.ResourceNotFoundException;
+import ca.uhn.fhir.rest.server.exceptions.UnprocessableEntityException;
+
 import org.hl7.fhir.r5.model.*;
+import org.hl7.fhir.r5.model.Bundle.BundleEntryComponent;
 import org.opencds.cqf.fhir.api.Repository;
 import org.opencds.cqf.fhir.utility.search.Searches;
 
@@ -29,6 +32,7 @@ public class CohorteService implements CohorteServiceImpl {
 	 * @param terminologyEndpoint   The endpoint providing access to terminology (if applicable).
 	 * @return A {@link Group} representing the eligible patient cohort.
 	 * @throws ResourceNotFoundException if the {@link ResearchStudy} cannot be found.
+	 * @throws UnprocessableEntityException if an OperationOutcome is received while searching for the {@link ResearchStudy}.
 	 */
 	public Group cohorting(
 		CanonicalType researchStudyUrl,
@@ -37,12 +41,44 @@ public class CohorteService implements CohorteServiceImpl {
 		Endpoint terminologyEndpoint,
 		Endpoint cqlEngineEndpoint) {
 		Repository repo = Repositories.proxy(repository, false, dataEndpoint, researchStudyEndpoint, terminologyEndpoint);
-		Bundle b = repo.search(Bundle.class, ResearchStudy.class, Searches.byCanonical(researchStudyUrl.getCanonical()), null);
-		if (b.getEntry().isEmpty()) {
+		Bundle studyBundle;
+		try {
+			studyBundle = repo.search(Bundle.class, ResearchStudy.class, Searches.byCanonical(researchStudyUrl.getCanonical()), null);
+		} catch (Exception e) {
+			throw new UnprocessableEntityException("Failed to search ResearchStudy by canonical: " + e.getMessage());
+		}
+		if (studyBundle.getEntry().isEmpty()) {
 			var errorMsg = String.format("Unable to find ResearchStudy with url: %s", researchStudyUrl.getCanonical());
 			throw new ResourceNotFoundException(errorMsg);
 		}
-		ResearchStudy researchStudy = (ResearchStudy) b.getEntry().get(0).getResource();
+
+		ResearchStudy researchStudy = null;
+		OperationOutcome operationOutcome = null;
+		for (BundleEntryComponent entry : studyBundle.getEntry()) {
+			if (entry == null || entry.getResource() == null) continue;
+			if (entry.getResource() instanceof ResearchStudy) {
+				researchStudy = (ResearchStudy) entry.getResource();
+				break;
+			} else if (entry.getResource() instanceof OperationOutcome) {
+				operationOutcome = (OperationOutcome) entry.getResource();
+			}
+		}
+		if (researchStudy == null) {
+			if (operationOutcome != null) {
+				String diag = null;
+				if (operationOutcome.hasIssue() && operationOutcome.getIssueFirstRep().hasDiagnostics()) {
+					diag = operationOutcome.getIssueFirstRep().getDiagnostics();
+				} else if (operationOutcome.hasText() && operationOutcome.getText().hasDiv()) {
+					diag = operationOutcome.getText().getDivAsString();
+				}
+				String message = "Server returned an OperationOutcome while resolving ResearchStudy";
+				if (diag != null && !diag.isBlank()) {
+					message += ": " + diag;
+				}
+				throw new UnprocessableEntityException(message);
+			}
+			throw new ResourceNotFoundException("ResearchStudy with canonical '" + researchStudyUrl.getValue() + "' not found");
+		}
 
 		Parameters evaluateParams = new Parameters();
 		evaluateParams.addParameter()

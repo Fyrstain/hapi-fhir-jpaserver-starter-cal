@@ -56,7 +56,9 @@ class StudyInstantiateServiceTest {
 			EvidenceVariable evA = createEvidenceVariable(EV_A_ID, EV_A_CANONICAL, EV_B_CANONICAL);
 			EvidenceVariable evB = createEvidenceVariable(EV_B_ID, EV_B_CANONICAL, null);
 
-			mockStudySearch(studyDefinition);
+			Bundle bundle = createBundleWithResources(studyDefinition);
+			mockStudySearchBundle(bundle);
+			//mockStudySearch(studyDefinition);
 			mockEvidenceVariableRead(EV_A_ID, evA);
 			mockEvidenceVariableSearch(evB);
 			setupFhirClientMocks(new Bundle());
@@ -120,7 +122,9 @@ class StudyInstantiateServiceTest {
 			setupRepositoryProxy(repos);
 
 			ResearchStudy studyDefinition = createResearchStudy(STUDY_CANONICAL, null);
-			mockStudySearch(studyDefinition);
+			Bundle bundle = createBundleWithResources(studyDefinition);
+			mockStudySearchBundle(bundle);
+			//mockStudySearch(studyDefinition);
 
 			CanonicalType studyCanonical = new CanonicalType(STUDY_CANONICAL);
 			Endpoint studyEndpoint = createEndpoint();
@@ -135,6 +139,50 @@ class StudyInstantiateServiceTest {
 				() -> service.instantiateStudy(
 					studyCanonical,
 					studyEndpoint));
+		}
+	}
+
+	@Test
+	void instantiateStudyBundleWithOperationOutcomeOnlyThrows() {
+		try (MockedStatic<Repositories> repos = mockStatic(Repositories.class)) {
+			setupRepositoryProxy(repos);
+
+			OperationOutcome oo = new OperationOutcome();
+			oo.addIssue().setDiagnostics("Search endpoint returned an error");
+
+			mockStudySearchBundle(createBundleWithResources(oo));
+
+			CanonicalType studyCanonical = new CanonicalType(STUDY_CANONICAL);
+			Endpoint studyEndpoint = createEndpoint();
+
+			assertThrows(UnprocessableEntityException.class,
+				() -> service.instantiateStudy(studyCanonical, studyEndpoint));
+		}
+	}
+
+	@Test
+	void instantiateStudyBundleWithStudyAndOperationOutcomeReturnsParameters() {
+		try (MockedStatic<Repositories> repos = mockStatic(Repositories.class)) {
+			setupRepositoryProxy(repos);
+
+			ResearchStudy studyDefinition = createResearchStudy(STUDY_CANONICAL, EV_A_ID);
+			OperationOutcome oo = new OperationOutcome();
+			oo.addIssue().setDiagnostics("Non-fatal warning");
+
+			// Bundle containing both OO and Study (order doesn't matter)
+			mockStudySearchBundle(createBundleWithResources(oo, studyDefinition));
+
+			// Provide EV instance and client mocks as in the main success test
+			EvidenceVariable evA = createEvidenceVariable(EV_A_ID, EV_A_CANONICAL, null);
+			mockEvidenceVariableRead(EV_A_ID, evA);
+			setupFhirClientMocks(new Bundle());
+
+			Parameters result = service.instantiateStudy(
+				new CanonicalType(STUDY_CANONICAL),
+				createEndpoint());
+
+			assertParametersValid(result);
+			verify(client.transaction()).withBundle(any(Bundle.class));
 		}
 	}
 
@@ -169,9 +217,17 @@ class StudyInstantiateServiceTest {
 		return ev;
 	}
 
-	private Bundle createBundleWithResource(Resource resource) {
+	// private Bundle createBundleWithResource(Resource resource) {
+	// 	Bundle bundle = new Bundle();
+	// 	bundle.addEntry().setResource(resource);
+	// 	return bundle;
+	// }
+
+	private Bundle createBundleWithResources(Resource... resources) {
 		Bundle bundle = new Bundle();
-		bundle.addEntry().setResource(resource);
+		for (Resource r : resources) {
+			bundle.addEntry().setResource(r);
+		}
 		return bundle;
 	}
 
@@ -185,13 +241,22 @@ class StudyInstantiateServiceTest {
 			.thenReturn(researchRepository);
 	}
 
-	private void mockStudySearch(ResearchStudy study) {
+	// private void mockStudySearch(ResearchStudy study) {
+	// 	when(researchRepository.search(
+	// 		eq(Bundle.class),
+	// 		eq(ResearchStudy.class),
+	// 		any(),
+	// 		isNull()))
+	// 		.thenReturn(createBundleWithResources(study));
+	// }
+
+	private void mockStudySearchBundle(Bundle bundle) {
 		when(researchRepository.search(
 			eq(Bundle.class),
 			eq(ResearchStudy.class),
 			any(),
 			isNull()))
-			.thenReturn(createBundleWithResource(study));
+			.thenReturn(bundle);
 	}
 
 	private void mockEvidenceVariableRead(String id, EvidenceVariable ev) {

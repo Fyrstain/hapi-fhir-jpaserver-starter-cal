@@ -8,11 +8,12 @@ import ca.uhn.fhir.jpa.starter.datamart.service.r5.service.DatamartService;
 import ca.uhn.fhir.jpa.starter.datamart.service.r5.utils.ResearchStudyUtils;
 import ca.uhn.fhir.rest.api.MethodOutcome;
 import ca.uhn.fhir.rest.server.exceptions.ResourceNotFoundException;
+import ca.uhn.fhir.rest.server.exceptions.UnprocessableEntityException;
+
 import org.hl7.fhir.instance.model.api.IBaseResource;
 import org.hl7.fhir.r5.model.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
 import org.mockito.MockedConstruction;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
@@ -72,6 +73,27 @@ class DatamartServiceTest {
 		}
 	}
 
+	/** Test with OperationOutcome as only returned entry in Bundle search for ResearchStudy */
+	@Test
+	void ResearchStudySearchReturningOperationOutcomeThrowsUnprocessableEntity() {
+		try (MockedStatic<Repositories> reps = Mockito.mockStatic(Repositories.class)) {
+			reps.when(() -> Repositories.proxy(any(Repository.class), anyBoolean(), (IBaseResource) any(), any(), any()))
+				.thenReturn(repository);
+
+			OperationOutcome oo = new OperationOutcome();
+			oo.addIssue().setDiagnostics("Search error");
+
+			when(repository.search(eq(Bundle.class), eq(ResearchStudy.class), any(), isNull()))
+				.thenReturn(bundleWith(oo));
+
+			assertThrows(UnprocessableEntityException.class, () ->
+				service.generateDatamart(
+					canonical(STUDY_URL),
+					endpoint("content"), endpoint("data"), endpoint("term"), endpoint("cql")
+				)
+			);
+		}
+	}
 
 	@Test
 	void generateDatamartInitialPhaseThrowsPreconditionFailure() {
@@ -139,6 +161,47 @@ class DatamartServiceTest {
 			Coding coding = researchStudy.getPhase().getCodingFirstRep();
 			assertEquals(ResearchStudyUtils.CUSTOM_PHASE_SYSTEM, coding.getSystem());
 			assertEquals(ResearchStudyUtils.POST_DATAMART, coding.getCode());
+		}
+	}
+
+	/** Test with Bundle containing OperationOutcome + ResearchStudy in the entries of the returned Bundle when searching for ResearchStudy */
+	@Test
+	void generateDatamartWithOperationOutcomeAndStudySucceeds() {
+		ResearchStudy researchStudy = initiateStudyWithPhase(STUDY_URL, "post-cohort");
+		OperationOutcome oo = new OperationOutcome();
+		oo.addIssue().setDiagnostics("warning");
+
+		ListResource listFromProcessor = new ListResource().setStatus(ListResource.ListStatus.CURRENT);
+
+		try (MockedStatic<Repositories> reps = Mockito.mockStatic(Repositories.class);
+			MockedConstruction<RemoteCqlClient> cqlClientConstructed = Mockito.mockConstruction(RemoteCqlClient.class);
+			MockedConstruction<DatamartProcessor> datamartProcessorConstructed = Mockito.mockConstruction(
+				DatamartProcessor.class,
+				(mock, ctx) -> when(mock.generateDatamart(any(ResearchStudy.class), any(Parameters.class)))
+					.thenReturn(listFromProcessor)
+			)) {
+
+			reps.when(() -> Repositories.proxy(any(Repository.class), anyBoolean(), (IBaseResource) any(), any(), any()))
+				.thenReturn(repository);
+
+			when(repository.search(eq(Bundle.class), eq(ResearchStudy.class), any(), isNull()))
+				.thenReturn(bundleWith(oo, researchStudy));
+
+			when(repository.create(any(ListResource.class)))
+				.thenAnswer(inv -> {
+					ListResource lr = inv.getArgument(0, ListResource.class);
+					MethodOutcome mo = new MethodOutcome();
+					mo.setId(new IdType("List", "list1"));
+					return mo;
+				});
+
+			ListResource out = service.generateDatamart(
+				canonical(STUDY_URL),
+				endpoint("content"), endpoint("data"), endpoint("term"), endpoint("cql")
+			);
+
+			assertNotNull(out);
+			assertEquals("list1", out.getIdElement().getIdPart());
 		}
 	}
 
@@ -222,9 +285,11 @@ class DatamartServiceTest {
 		return researchStudy;
 	}
 
-	private static Bundle bundleWith(Resource resource) {
+	private static Bundle bundleWith(Resource... resources) {
 		Bundle bundle = new Bundle();
-		bundle.addEntry().setResource(resource);
+		for (Resource r : resources) {
+			bundle.addEntry().setResource(r);
+		}
 		return bundle;
 	}
 

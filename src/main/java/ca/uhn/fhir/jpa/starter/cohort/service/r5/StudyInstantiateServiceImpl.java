@@ -73,7 +73,34 @@ public class StudyInstantiateServiceImpl implements ca.uhn.fhir.jpa.starter.coho
 		if (studyBundle.getEntry().isEmpty()) {
 			throw new ResourceNotFoundException("ResearchStudy with canonical '" + studyUrl.getValue() + "' not found");
 		}
-		ResearchStudy definition = (ResearchStudy) studyBundle.getEntry().get(0).getResource();
+
+		ResearchStudy definition = null;
+		OperationOutcome operationOutcome = null;
+		for (BundleEntryComponent entry : studyBundle.getEntry()) {
+			if (entry == null || entry.getResource() == null) continue;
+			if (entry.getResource() instanceof ResearchStudy) {
+				definition = (ResearchStudy) entry.getResource();
+				break;
+			} else if (entry.getResource() instanceof OperationOutcome) {
+				operationOutcome = (OperationOutcome) entry.getResource();
+			}
+		}
+		if (definition == null) {
+			if (operationOutcome != null) {
+				String diag = null;
+				if (operationOutcome.hasIssue() && operationOutcome.getIssueFirstRep().hasDiagnostics()) {
+					diag = operationOutcome.getIssueFirstRep().getDiagnostics();
+				} else if (operationOutcome.hasText() && operationOutcome.getText().hasDiv()) {
+					diag = operationOutcome.getText().getDivAsString();
+				}
+				String message = "Server returned an OperationOutcome while resolving ResearchStudy";
+				if (diag != null && !diag.isBlank()) {
+					message += ": " + diag;
+				}
+				throw new UnprocessableEntityException(message);
+			}
+			throw new ResourceNotFoundException("ResearchStudy with canonical '" + studyUrl.getValue() + "' not found");
+		}
 
 		// 4. Create instances for each EV definition
 		Map<String, EvidenceVariable> variableInstanceMap = new LinkedHashMap<>();
